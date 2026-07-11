@@ -81,6 +81,68 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   session's egress allowlist, and bundling is the correct approach for a native
   app anyway (no network dependency to render text).
 
-## Phase 2 — Backend adapter + mock auth/presence
+## Phase 2 — Backend adapter + mock auth/presence (done)
+
+- `src/backend/types.ts`: all shared domain types (`User`, `ScratcherProfile` with
+  an internal-only `isBot` flag never surfaced through any UI-facing shape,
+  `Order`/`OrderStatus`, `ChatMessage`, `Rating`, `GeoPoint`, etc).
+- `src/backend/adapter.ts`: the `BackendAdapter` interface — `auth` / `presence` /
+  `orders` / `chat` / `ratings`, fully async, no platform details (no AsyncStorage,
+  no timers) leaking into the seam, so a future `SupabaseBackend` can implement it
+  unchanged.
+- `src/backend/mock/seed.ts`: ~25 static Israeli-persona records (pure data, no
+  behavior) — the pool the future bot-availability/accept-decline layer (Phase 3)
+  will animate.
+- `src/backend/mock/index.ts`: `MockBackend implements BackendAdapter` — in-memory
+  state mirrored to AsyncStorage (write-through, loaded once on first use); a
+  small internal pub/sub emitter backs every `subscribe*` method; mutations
+  notify after a random 1.5–8s delay (constructor-injectable, so tests run fast)
+  so the mock feels like a real backend. Went beyond the phase's "auth + presence"
+  minimum and implemented orders/chat/ratings fully too, since the shape was
+  straightforward — bot behavior itself (auto accept/decline, scripted chat)
+  stays out of scope here and is explicitly marked inert pending Phase 3.
+- `src/backend/supabase/README.md`: short placeholder describing the future seam.
+- Test harness: `jest-expo` + `jest.config.js` + `jest.setup.js` (mocks
+  `@react-native-async-storage/async-storage` via its official jest mock —
+  needed because the real native module isn't linked under plain Jest). Smoke
+  test in `src/backend/mock/__tests__/adapter.test.ts`: sign up → verify with the
+  demo code → `getCurrentUser` round-trips correctly; a wrong code is rejected;
+  availability toggles and reads back; `listNearby` returns the seeded pool.
+  4/4 passing.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `expo export -p web` succeeds · `jest` 4/4 passing.
+- Built `src/components/{Avatar,Button,Card,ScreenContainer,AvailabilityToggle,
+  RatingStars}.tsx` and `src/utils/avatarPresets.ts` in parallel (reusable
+  primitives every later screen phase needs; pure UI/theme work with zero
+  backend dependency, so safe to build alongside).
+
+### Out-of-plan decisions
+
+- **Model handoff mid-phase**: delegated this phase to a stronger model via a
+  foreground subagent per the plan's own model-routing guidance. It produced a
+  complete, correct `types.ts`/`adapter.ts`/`seed.ts`/`mock/index.ts` (went
+  beyond the ask, implementing all five API domains) but hit a session usage
+  limit before setting up the test harness. Rather than block on that model's
+  limit resetting, the orchestrating session finished the test setup itself and
+  re-verified the entire phase's output independently — did not trust the
+  subagent's unfinished report.
+- **Fixed a real concurrency bug found on review**: `subscribeNearby`'s initial
+  snapshot was scheduled against the whole `"nearby"` channel, so each new
+  subscriber would cause every *other* already-subscribed listener to receive a
+  redundant duplicate emit too. Changed it to target only the new subscriber's
+  own callback for its initial snapshot.
+- **Jest version pin**: `jest-expo@~57.0.1`'s peer dependency (`@react-native/
+  jest-preset@^0.86.0`) is only compatible with Jest 29.x internals (`jest-mock`
+  API surface) — Jest 30 (the current `npm install jest` default) throws at
+  runtime (`clearMocksOnScope is not a function`). Pinned `jest`/`@types/jest`
+  to `^29`. Also needed a small `jest.setup.js` calling `jest.mock(...)`
+  explicitly for AsyncStorage — pointing `setupFiles` directly at the vendor
+  mock file isn't sufficient, since that file only exports the mock object and
+  doesn't register itself with Jest's module registry on its own.
+- Moved `jest`/`jest-expo`/`@types/jest`/`@react-native/jest-preset` into
+  `devDependencies` (the subagent's `expo install jest-expo` call had placed
+  `jest-expo` under `dependencies` by default).
+
+## Phase 3 — Bot engine
 
 _pending_
