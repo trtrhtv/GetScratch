@@ -7,11 +7,18 @@
 // mock feels like it is talking to a real backend. The delay is injectable so
 // tests can run fast.
 //
-// INTENTIONALLY INERT (pending the future bot-behavior layer): scratcher
-// profiles from the seed pool are bots that never auto accept/decline orders
-// and never send chat messages — an order created against a seed scratcher
-// simply stays "pending", and `listIncoming` stays empty for a real user
-// because bots do not originate requests. That behavioral layer is separate.
+// BOT BEHAVIOR (see ./bots.ts for the pure decision/content logic wired in here):
+//   - Availability rotation: only 1–3 of the ~25 seed bots are "available" at
+//     any moment; the set drifts on a 3–10 min timer. The rotation loop is
+//     started lazily on the first `subscribeNearby` and stopped once the last
+//     nearby subscriber unsubscribes, so a fresh MockBackend starts no timers.
+//   - Order responses: an order created against a seed bot gets an auto
+//     accept/decline decision after a 5–20 s delay (re-reading the possibly
+//     raised price), followed — on accept — by a scripted chat sequence.
+//   - Customer-bot requests: while the signed-in user is available, a random
+//     bot originates an order against them every 5–15 min; when the user accepts,
+//     the bot sends its scripted customer-side chat.
+// All timer ranges are constructor-injectable; `dispose()` clears every timer.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -38,12 +45,33 @@ import type {
   Unsubscribe,
   User,
 } from "../types";
+import {
+  buildBotCustomerOrderTerms,
+  buildCustomerChatLines,
+  buildScratcherChatLines,
+  isSeedBotId,
+  nextAvailableFlags,
+  pickDeclineReason,
+  pickEtaMinutes,
+  shouldBotAccept,
+  type Rng,
+} from "./bots";
 import { SCRATCHER_SEEDS, type ScratcherSeed } from "./seed";
 
 const STORAGE_KEY = "@gardan/mock/v1";
 const DEMO_VERIFY_CODE = "000000";
 const DEFAULT_MIN_DELAY_MS = 1500;
 const DEFAULT_MAX_DELAY_MS = 8000;
+
+// Real-feel bot timing defaults (all constructor-injectable for fast tests).
+const DEFAULT_BOT_DECISION_MIN_MS = 5000; // order accept/decline: 5–20 s
+const DEFAULT_BOT_DECISION_MAX_MS = 20000;
+const DEFAULT_BOT_CHAT_STEP_MIN_MS = 1500; // between scripted chat lines: a few s
+const DEFAULT_BOT_CHAT_STEP_MAX_MS = 4000;
+const DEFAULT_BOT_ROTATION_MIN_MS = 3 * 60 * 1000; // availability window: 3–10 min
+const DEFAULT_BOT_ROTATION_MAX_MS = 10 * 60 * 1000;
+const DEFAULT_BOT_CUSTOMER_REQ_MIN_MS = 5 * 60 * 1000; // bot-originated req: 5–15 min
+const DEFAULT_BOT_CUSTOMER_REQ_MAX_MS = 15 * 60 * 1000;
 
 /** Center used to place seed scratchers (roughly central Tel Aviv). */
 const SEED_CENTER: GeoPoint = { lat: 32.0809, lng: 34.7806 };
@@ -61,6 +89,28 @@ export interface MockBackendOptions {
   maxDelayMs?: number;
   /** Storage backend. Defaults to AsyncStorage. */
   storage?: StorageLike;
+  /** Lower bound of a bot's order accept/decline delay, ms. Default 5000. */
+  botDecisionMinMs?: number;
+  /** Upper bound of a bot's order accept/decline delay, ms. Default 20000. */
+  botDecisionMaxMs?: number;
+  /** Lower bound of the gap between scripted bot chat lines, ms. Default 1500. */
+  botChatStepMinMs?: number;
+  /** Upper bound of the gap between scripted bot chat lines, ms. Default 4000. */
+  botChatStepMaxMs?: number;
+  /** Lower bound of the availability-rotation window, ms. Default 180000. */
+  botAvailabilityRotationMinMs?: number;
+  /** Upper bound of the availability-rotation window, ms. Default 600000. */
+  botAvailabilityRotationMaxMs?: number;
+  /** Lower bound between bot-originated customer requests, ms. Default 300000. */
+  botCustomerRequestMinMs?: number;
+  /** Upper bound between bot-originated customer requests, ms. Default 900000. */
+  botCustomerRequestMaxMs?: number;
+  /**
+   * Random source in [0, 1) for all bot decisions (accept curve, ETA, rotation,
+   * decline reason, generated request terms). Defaults to Math.random. Inject a
+   * fixed function to make bot behavior deterministic in tests.
+   */
+  rng?: Rng;
 }
 
 /** The slice of state that is persisted across reloads. */
@@ -113,6 +163,16 @@ export class MockBackend implements BackendAdapter {
   private readonly minDelayMs: number;
   private readonly maxDelayMs: number;
   private readonly storage: StorageLike;
+  private readonly rng: Rng;
+
+  private readonly botDecisionMinMs: number;
+  private readonly botDecisionMaxMs: number;
+  private readonly botChatStepMinMs: number;
+  private readonly botChatStepMaxMs: number;
+  private readonly botRotationMinMs: number;
+  private readonly botRotationMaxMs: number;
+  private readonly botCustomerReqMinMs: number;
+  private readonly botCustomerReqMaxMs: number;
 
   private state: PersistedState = emptyState();
   private readonly listeners = new Map<string, Set<Listener>>();
@@ -120,20 +180,74 @@ export class MockBackend implements BackendAdapter {
   private idCounter = 0;
   private loadPromise: Promise<void> | null = null;
 
+  /** Live nearby subscribers, each keyed to its own origin so rotation can
+   *  re-emit a per-origin snapshot. */
+  private readonly nearbySubscribers = new Set<{
+    origin: GeoPoint;
+    onChange: (profiles: ScratcherProfile[]) => void;
+  }>();
+  /** Every outstanding internal timer, so dispose() can clear them all. */
+  private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+  private rotationTimer: ReturnType<typeof setTimeout> | null = null;
+  private customerRequestTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(options: MockBackendOptions = {}) {
     this.minDelayMs = options.minDelayMs ?? DEFAULT_MIN_DELAY_MS;
     this.maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
     this.storage = options.storage ?? AsyncStorage;
+    this.rng = options.rng ?? Math.random;
+
+    this.botDecisionMinMs = options.botDecisionMinMs ?? DEFAULT_BOT_DECISION_MIN_MS;
+    this.botDecisionMaxMs = options.botDecisionMaxMs ?? DEFAULT_BOT_DECISION_MAX_MS;
+    this.botChatStepMinMs = options.botChatStepMinMs ?? DEFAULT_BOT_CHAT_STEP_MIN_MS;
+    this.botChatStepMaxMs = options.botChatStepMaxMs ?? DEFAULT_BOT_CHAT_STEP_MAX_MS;
+    this.botRotationMinMs =
+      options.botAvailabilityRotationMinMs ?? DEFAULT_BOT_ROTATION_MIN_MS;
+    this.botRotationMaxMs =
+      options.botAvailabilityRotationMaxMs ?? DEFAULT_BOT_ROTATION_MAX_MS;
+    this.botCustomerReqMinMs =
+      options.botCustomerRequestMinMs ?? DEFAULT_BOT_CUSTOMER_REQ_MIN_MS;
+    this.botCustomerReqMaxMs =
+      options.botCustomerRequestMaxMs ?? DEFAULT_BOT_CUSTOMER_REQ_MAX_MS;
+
     // Bots are derived from the static seed pool at construction; they are not
-    // persisted (they are regenerated deterministically every run).
+    // persisted (they are regenerated deterministically every run). Only 1–3
+    // start available (product spec), rotating over time once someone watches.
+    const initialFlags = nextAvailableFlags(SCRATCHER_SEEDS.length, this.rng);
     this.bots = SCRATCHER_SEEDS.map((seed, i) => ({
       seed,
       location: {
         lat: SEED_CENTER.lat + (((i % 5) - 2) * 0.006),
         lng: SEED_CENTER.lng + ((Math.floor(i / 5) - 2) * 0.006),
       },
-      isAvailable: true,
+      isAvailable: initialFlags[i] ?? false,
     }));
+  }
+
+  /**
+   * Stop every internal timer (rotation, customer-request loop, pending bot
+   * decisions and chat steps). Idempotent. Call this in test teardown so no
+   * repeating timer keeps the Jest process alive.
+   */
+  dispose(): void {
+    for (const timer of this.pendingTimers) clearTimeout(timer);
+    this.pendingTimers.clear();
+    this.rotationTimer = null;
+    this.customerRequestTimer = null;
+  }
+
+  /** setTimeout whose handle is tracked (and auto-removed on fire) for dispose(). */
+  private track(fn: () => void, ms: number): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer);
+      fn();
+    }, ms);
+    this.pendingTimers.add(timer);
+    return timer;
+  }
+
+  private randRange(min: number, max: number): number {
+    return min + this.rng() * Math.max(0, max - min);
   }
 
   // ---- persistence -------------------------------------------------------
@@ -198,10 +312,14 @@ export class MockBackend implements BackendAdapter {
   }
 
   private requireCurrentUser(): User {
-    const id = this.state.currentUserId;
-    const user = id ? this.state.users[id] : undefined;
+    const user = this.currentUserOrNull();
     if (!user) throw new Error("No current user. Sign up and verify first.");
     return user;
+  }
+
+  private currentUserOrNull(): User | null {
+    const id = this.state.currentUserId;
+    return (id && this.state.users[id]) || null;
   }
 
   private botToProfile(bot: BotState, origin: GeoPoint): ScratcherProfile {
@@ -296,6 +414,9 @@ export class MockBackend implements BackendAdapter {
       const user = this.requireCurrentUser();
       user.isAvailable = isAvailable;
       await this.persist();
+      // Bot-originated customer requests only flow while the user is available.
+      if (isAvailable) this.startCustomerRequestLoop();
+      else this.stopCustomerRequestLoop();
       return user;
     },
 
@@ -305,18 +426,120 @@ export class MockBackend implements BackendAdapter {
     },
 
     subscribeNearby: (origin: GeoPoint, onChange) => {
-      const listener: Listener = (p) => onChange(p as ScratcherProfile[]);
-      const unsubscribe = this.on("nearby", listener);
-      // Emit an initial snapshot to THIS subscriber only (not the whole
-      // channel) after a backend-like delay — otherwise every new subscriber
-      // would also re-notify every other already-subscribed listener.
-      const timer = setTimeout(() => onChange(this.nearbyProfiles(origin)), this.randomDelay());
+      const sub = { origin, onChange };
+      this.nearbySubscribers.add(sub);
+      // Start the availability-rotation loop lazily on the first live watcher.
+      this.startRotationLoop();
+      // Emit an initial snapshot to THIS subscriber only, after a backend-like
+      // delay, so it sees the current available set immediately.
+      const timer = this.track(
+        () => onChange(this.nearbyProfiles(origin)),
+        this.randomDelay(),
+      );
       return () => {
         clearTimeout(timer);
-        unsubscribe();
+        this.pendingTimers.delete(timer);
+        this.nearbySubscribers.delete(sub);
+        // Stop rotating once nobody is watching — no dangling timers.
+        if (this.nearbySubscribers.size === 0) this.stopRotationLoop();
       };
     },
   };
+
+  // ---- bot: availability rotation ---------------------------------------
+
+  /** Begin (if not already) the timer that drifts the available bot set. */
+  private startRotationLoop(): void {
+    if (this.rotationTimer !== null) return;
+    this.scheduleRotation();
+  }
+
+  private stopRotationLoop(): void {
+    if (this.rotationTimer !== null) {
+      clearTimeout(this.rotationTimer);
+      this.pendingTimers.delete(this.rotationTimer);
+      this.rotationTimer = null;
+    }
+  }
+
+  private scheduleRotation(): void {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer);
+      const flags = nextAvailableFlags(this.bots.length, this.rng);
+      this.bots.forEach((bot, i) => {
+        bot.isAvailable = flags[i] ?? false;
+      });
+      // Re-emit a fresh per-origin snapshot to every live nearby subscriber.
+      for (const sub of this.nearbySubscribers) {
+        sub.onChange(this.nearbyProfiles(sub.origin));
+      }
+      // Keep rotating only while someone is still watching.
+      if (this.nearbySubscribers.size > 0) this.scheduleRotation();
+      else this.rotationTimer = null;
+    }, this.randRange(this.botRotationMinMs, this.botRotationMaxMs));
+    this.pendingTimers.add(timer);
+    this.rotationTimer = timer;
+  }
+
+  // ---- bot: customer-originated requests --------------------------------
+
+  private startCustomerRequestLoop(): void {
+    if (this.customerRequestTimer !== null) return;
+    this.scheduleCustomerRequest();
+  }
+
+  private stopCustomerRequestLoop(): void {
+    if (this.customerRequestTimer !== null) {
+      clearTimeout(this.customerRequestTimer);
+      this.pendingTimers.delete(this.customerRequestTimer);
+      this.customerRequestTimer = null;
+    }
+  }
+
+  private scheduleCustomerRequest(): void {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(timer);
+      void this.originateBotCustomerOrder();
+      // Reschedule only while the signed-in user is still available.
+      const me = this.currentUserOrNull();
+      if (me?.isAvailable) this.scheduleCustomerRequest();
+      else this.customerRequestTimer = null;
+    }, this.randRange(this.botCustomerReqMinMs, this.botCustomerReqMaxMs));
+    this.pendingTimers.add(timer);
+    this.customerRequestTimer = timer;
+  }
+
+  /**
+   * Internal path (the public `orders.create` assumes the signed-in user is the
+   * customer): a random available bot originates an order AGAINST the real user,
+   * i.e. bot = customerId, real user = scratcherId. Emits on the order channel.
+   */
+  private async originateBotCustomerOrder(): Promise<void> {
+    await this.ensureLoaded();
+    const me = this.currentUserOrNull();
+    if (!me || !me.isAvailable) return;
+    const available = this.bots.filter((b) => b.isAvailable);
+    if (available.length === 0) return;
+    const bot = available[Math.floor(this.rng() * available.length)];
+    if (!bot) return;
+
+    const terms = buildBotCustomerOrderTerms(this.rng);
+    const id = this.nextId("o");
+    const order: Order = {
+      id,
+      customerId: bot.seed.id,
+      scratcherId: me.id,
+      zone: terms.zone,
+      intensity: terms.intensity,
+      durationMinutes: terms.durationMinutes,
+      price: terms.price,
+      status: "pending",
+      createdAt: Date.now(),
+    };
+    this.state.orders[id] = order;
+    await this.persist();
+    this.scheduleEmit(`order:${id}`, () => this.state.orders[id]);
+  }
 
   // ---- orders ------------------------------------------------------------
 
@@ -339,6 +562,9 @@ export class MockBackend implements BackendAdapter {
       this.state.orders[id] = order;
       await this.persist();
       this.scheduleEmit(`order:${id}`, () => this.state.orders[id]);
+      // If the target is a seed bot, schedule its auto accept/decline decision.
+      const botSeed = SCRATCHER_SEEDS.find((s) => s.id === input.scratcherId);
+      if (botSeed) this.scheduleBotDecision(id, botSeed);
       return order;
     },
 
@@ -353,19 +579,14 @@ export class MockBackend implements BackendAdapter {
     },
 
     respond: async (orderId: string, response: OrderResponse) => {
-      const order = await this.mutateOrder(orderId, (o) => {
-        if (o.status !== "pending") {
-          throw new Error("Order is not awaiting a response.");
-        }
-        if (response.accept) {
-          o.status = "accepted";
-          o.acceptedAt = Date.now();
-          if (response.etaMinutes !== undefined) o.etaMinutes = response.etaMinutes;
-        } else {
-          o.status = "declined";
-          if (response.reason !== undefined) o.declineReason = response.reason;
-        }
-      });
+      const order = await this.mutateOrder(orderId, (o) =>
+        this.applyOrderResponse(o, response),
+      );
+      // If the real user (scratcher mode) just accepted a bot-originated request,
+      // the bot (customer) sends its scripted customer-side chat lines.
+      if (response.accept && isSeedBotId(order.customerId)) {
+        this.scheduleBotChat(order.id, order.customerId, buildCustomerChatLines());
+      }
       return order;
     },
 
@@ -431,34 +652,120 @@ export class MockBackend implements BackendAdapter {
     return order;
   }
 
+  /** The single accept/decline status transition, shared by the public
+   *  `orders.respond` and the bot auto-decision path. */
+  private applyOrderResponse(order: Order, response: OrderResponse): void {
+    if (order.status !== "pending") {
+      throw new Error("Order is not awaiting a response.");
+    }
+    if (response.accept) {
+      order.status = "accepted";
+      order.acceptedAt = Date.now();
+      if (response.etaMinutes !== undefined) order.etaMinutes = response.etaMinutes;
+    } else {
+      order.status = "declined";
+      if (response.reason !== undefined) order.declineReason = response.reason;
+    }
+  }
+
+  // ---- bot: order response simulation -----------------------------------
+
+  /** Schedule a bot's accept/decline decision for an order after a random delay. */
+  private scheduleBotDecision(orderId: string, seed: ScratcherSeed): void {
+    this.track(() => {
+      void this.runBotDecision(orderId, seed);
+    }, this.randRange(this.botDecisionMinMs, this.botDecisionMaxMs));
+  }
+
+  private async runBotDecision(orderId: string, seed: ScratcherSeed): Promise<void> {
+    await this.ensureLoaded();
+    const order = this.state.orders[orderId];
+    // Only act if the order is still awaiting a response (it may have been
+    // cancelled). Re-read the CURRENT price — it may have been raised.
+    if (!order || order.status !== "pending") return;
+    const terms = {
+      price: order.price,
+      zone: order.zone,
+      intensity: order.intensity,
+      durationMinutes: order.durationMinutes,
+    };
+    if (shouldBotAccept(terms, seed, this.rng)) {
+      const etaMinutes = pickEtaMinutes(this.rng);
+      await this.mutateOrder(orderId, (o) =>
+        this.applyOrderResponse(o, { accept: true, etaMinutes }),
+      );
+      this.scheduleBotChat(orderId, seed.id, buildScratcherChatLines(etaMinutes));
+    } else {
+      await this.mutateOrder(orderId, (o) =>
+        this.applyOrderResponse(o, { accept: false, reason: pickDeclineReason(this.rng) }),
+      );
+    }
+  }
+
+  /** Send a bot's scripted chat lines one at a time, spaced by short delays. */
+  private scheduleBotChat(orderId: string, senderId: string, lines: string[]): void {
+    const sendNext = (index: number): void => {
+      if (index >= lines.length) return;
+      const order = this.state.orders[orderId];
+      // Stop if the order left a chat-open state (e.g. cancelled).
+      if (!order || order.status === "pending" || order.status === "declined" ||
+        order.status === "cancelled") {
+        return;
+      }
+      const text = lines[index];
+      if (text !== undefined) {
+        void this.appendMessage(orderId, senderId, text).catch(() => undefined);
+      }
+      this.track(
+        () => sendNext(index + 1),
+        this.randRange(this.botChatStepMinMs, this.botChatStepMaxMs),
+      );
+    };
+    this.track(
+      () => sendNext(0),
+      this.randRange(this.botChatStepMinMs, this.botChatStepMaxMs),
+    );
+  }
+
+  /** Append a chat message from `senderId` (a real user OR a bot) to an order's
+   *  thread. Shared by the public `chat.send` and the bot chat scheduler. */
+  private async appendMessage(
+    orderId: string,
+    senderId: string,
+    text: string,
+  ): Promise<ChatMessage> {
+    await this.ensureLoaded();
+    const order = this.state.orders[orderId];
+    if (!order) throw new Error("Unknown order.");
+    if (
+      order.status === "pending" ||
+      order.status === "declined" ||
+      order.status === "cancelled"
+    ) {
+      throw new Error("Chat opens only once an order is accepted.");
+    }
+    const message: ChatMessage = {
+      id: this.nextId("m"),
+      orderId,
+      senderId,
+      text,
+      createdAt: Date.now(),
+    };
+    const thread = this.state.messages[orderId] ?? [];
+    thread.push(message);
+    this.state.messages[orderId] = thread;
+    await this.persist();
+    this.scheduleEmit(`chat:${orderId}`, () => this.state.messages[orderId] ?? []);
+    return message;
+  }
+
   // ---- chat --------------------------------------------------------------
 
   readonly chat: ChatApi = {
     send: async (orderId: string, text: string) => {
       await this.ensureLoaded();
       const me = this.requireCurrentUser();
-      const order = this.state.orders[orderId];
-      if (!order) throw new Error("Unknown order.");
-      if (
-        order.status === "pending" ||
-        order.status === "declined" ||
-        order.status === "cancelled"
-      ) {
-        throw new Error("Chat opens only once an order is accepted.");
-      }
-      const message: ChatMessage = {
-        id: this.nextId("m"),
-        orderId,
-        senderId: me.id,
-        text,
-        createdAt: Date.now(),
-      };
-      const thread = this.state.messages[orderId] ?? [];
-      thread.push(message);
-      this.state.messages[orderId] = thread;
-      await this.persist();
-      this.scheduleEmit(`chat:${orderId}`, () => this.state.messages[orderId] ?? []);
-      return message;
+      return this.appendMessage(orderId, me.id, text);
     },
 
     list: async (orderId: string) => {

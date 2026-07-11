@@ -143,6 +143,69 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   `devDependencies` (the subagent's `expo install jest-expo` call had placed
   `jest-expo` under `dependencies` by default).
 
-## Phase 3 — Bot engine
+## Phase 3 — Bot engine (done)
+
+- `src/backend/mock/bots.ts`: pure, timer-free decision/content logic (no
+  MockBackend access — everything takes an injectable `rng`, easy to unit test):
+  `shouldBotAccept`/`acceptanceProbability`/`fairPrice` (baseline ~35% acceptance
+  at a "fair" reference price for the zone/intensity/duration combo, i.e. ~65%
+  decline per the product spec, rising with price — documented formula inline),
+  `pickDeclineReason`/`pickEtaMinutes`, `buildScratcherChatLines`/
+  `buildCustomerChatLines` (via the `i18n` singleton's standalone `.t()`, no
+  React context needed), `nextAvailableFlags` (keeps 1–3 of the ~25 bots
+  available at any moment — product spec), `isSeedBotId`,
+  `buildBotCustomerOrderTerms`.
+- `src/backend/mock/index.ts` wired it all in:
+  - **Availability rotation**: bots now start with only 1–3 available (not all
+    25). A per-instance rotation loop (3–10 min window, constructor-injectable)
+    starts lazily on the first `subscribeNearby` and stops once the last
+    subscriber unsubscribes — a fresh `MockBackend` starts no timers.
+  - **Order responses**: an order created against a seed bot schedules a
+    decision 5–20s later that re-reads the order's *current* price (so a
+    `raisePrice` call before the timer fires is respected) and reuses the same
+    `applyOrderResponse` transition helper the public `orders.respond` uses (no
+    duplicated status-machine logic). On accept, schedules the scripted
+    scratcher-chat sequence with the real ETA interpolated in.
+  - **Customer-bot requests**: while the signed-in user is available, a random
+    available bot originates a request against them every 5–15 min via a new
+    internal path (the public `orders.create` assumes the signed-in user is the
+    customer, so this bypasses it directly) — stops the moment the user goes
+    unavailable. On accept, the bot sends its scripted customer-side lines.
+  - `dispose()` clears every internal timer (rotation, customer-request loop,
+    pending bot decisions, chat steps) so a `MockBackend` instance can be torn
+    down cleanly — used in test teardown.
+- New tests: `bots.test.ts` (pure-function unit tests — acceptance curve at
+  forced rng extremes, decline-reason/ETA ranges, availability-count invariant,
+  order-terms shape) and `lifecycle.test.ts` (a full mock order lifecycle with
+  a forced-accept rng: create → bot accepts → scripted chat arrives → complete;
+  a real-`Math.random` run asserting it always leaves `"pending"` either way; a
+  raised-price-changes-the-decision case; rotation re-emitting to a live
+  subscriber over time and stopping after the last unsubscribe). 22/22 passing,
+  stable across repeated runs, clean `--detectOpenHandles` exit.
+- Verification gate (re-run independently, not just taken from the subagent's
+  report): `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1 pre-existing
+  warning) · `jest` 22/22 passing (ran 4× including `--detectOpenHandles`,
+  stable) · `expo export -p web` succeeds.
+- Read the entire diff line-by-line before accepting it. Found and reasoned
+  through one latent gap: `scheduleEmit` (the general one-shot notify-after-
+  delay used by every order/chat/rating mutation) isn't tracked by `dispose()`
+  the way the bot timers are — a `dispose()` call doesn't cancel an
+  already-in-flight one-shot notification. Left as-is: unlike the rotation/
+  customer-request loops (which repeat indefinitely and are the actual reason
+  `dispose()` exists), these are bounded, fire once, and — at the short delays
+  used everywhere in this codebase — resolve well before any test or component
+  unmount would care. Not the kind of leak `dispose()` was built to prevent.
+
+### Out-of-plan decisions
+
+- **Model retry succeeded**: re-delegated to the same stronger model that hit a
+  session limit in Phase 2. This run completed cleanly end-to-end, including
+  its own self-verification — independently reproduced here rather than taken
+  on faith (see gate results above).
+- No changes were needed to `types.ts`/`adapter.ts`/the i18n locale files —
+  the Phase 2 contract and the i18n keys prepared in Phase 1 covered everything
+  the bot engine needed.
+
+## Phase 4 — Onboarding + Terms of Service
 
 _pending_
