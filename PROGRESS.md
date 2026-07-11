@@ -424,6 +424,56 @@ overlapping modal.
   already exists rather than growing the adapter surface for a mock-only
   need; a real backend would obviously add a direct lookup.
 
-## Phase 8 — Profile + history + language switch
+## Phase 8 — Profile + history + language switch (done)
+
+- `app/profile.tsx`: my details (avatar/name/phone), ratings split by role
+  (`asCustomer`/`asScratcher`, each with an empty-state when `count === 0`),
+  order history (filtered to `completed`/`rated` orders — "history" means
+  finished transactions, not the full raw order log), language switch, and
+  a terms link.
+- `app/onboarding/terms.tsx` made **dual-purpose** rather than duplicated:
+  when `onboardingCompleted` is already true, it renders read-only (no
+  checkbox/CTA, just a "back" button) — the same screen serves both the
+  first-time acceptance flow and later reference from Profile.
+- `src/components/HistoryRow.tsx`: one row per finished order — counterparty,
+  role played, date, price, status.
+- `src/components/BackButton.tsx`: a small reusable back-chevron (added to
+  `profile.tsx` and `order/create.tsx`, the two screens that had no exit
+  affordance at all before this — everything else already has one via its
+  own cancel/skip button). Points the correct logical direction
+  (`I18nManager.isRTL` picks `ChevronRight` vs. `ChevronLeft`), so it flips
+  correctly with the language switch too — confirmed in the browser test
+  below, not just assumed.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `jest` 24/24 (unaffected) · `expo export -p web`
+  succeeds.
+
+### Drove the language switch live — the highest-risk part of this phase
+
+This is the one piece of the whole build that fundamentally can't be
+verified by reading code (`I18nManager.forceRTL` + reload is real-runtime
+behavior). Browser test: signed up → Profile screen in Hebrew (RTL,
+`ChevronRight` back arrow, ratings/history correctly empty-state for a fresh
+user) → tapped "English" → the app reloaded (as designed — RN can't re-flow
+an already-mounted tree's direction without it) → **entire layout flipped to
+LTR**: title switched to "Profile", every label translated, the language
+segmented control itself re-flowed (English now sits on the visual right
+where Hebrew had been on the visual right before — the row direction
+inverted), and the back chevron flipped to `ChevronLeft`. Then followed the
+terms link and confirmed it rendered the **English legal text**, read-only
+(no checkbox), LTR-aligned. All of this matched what was designed, not
+assumed from the implementation.
+
+### Out-of-plan decisions
+
+- Home's header icon buttons (`Menu`/profile) turned out not to be reliably
+  targetable by Playwright's `getByRole('button')` query on the web export
+  (likely an RN-web accessibility-role mapping quirk for bare `Pressable`
+  icons without a text label) — navigated directly via URL to `/profile` for
+  the browser test instead of clicking the header icon. The tap handler
+  itself (`onPress={() => router.push("/profile")}`) is unchanged and correct;
+  this was purely a test-authoring workaround, not a product fix.
+
+## Phase 9 — Polish pass
 
 _pending_

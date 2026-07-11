@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { router, useLocalSearchParams } from "expo-router";
 import ScreenContainer from "@/components/ScreenContainer";
+import BackButton from "@/components/BackButton";
 import Button from "@/components/Button";
 import Banner from "@/components/Banner";
 import ContourBackMap from "@/components/ContourBackMap";
@@ -70,6 +71,7 @@ export default function CreateOrderScreen() {
 
   return (
     <ScreenContainer>
+      <BackButton />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>{t("order.create.title")}</Text>
         {scratcher && (

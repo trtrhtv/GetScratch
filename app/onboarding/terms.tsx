@@ -8,8 +8,11 @@ import Checkbox from "@/components/Checkbox";
 import { color, font, fontSize, lineHeight, space } from "@/theme/tokens";
 import { useAppStore } from "@/store/useAppStore";
 
+// אותו מסך משמש גם לאישור הראשוני באונבורדינג וגם לעיון חוזר מהפרופיל —
+// כשהאונבורדינג כבר הושלם, מוצג כתצוגה בלבד (בלי checkbox/CTA).
 export default function TermsScreen() {
   const { t } = useTranslation();
+  const onboardingCompleted = useAppStore((s) => s.onboardingCompleted);
   const acceptTermsAndFinishOnboarding = useAppStore((s) => s.acceptTermsAndFinishOnboarding);
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -32,17 +35,23 @@ export default function TermsScreen() {
         <Text style={styles.body}>{t("onboarding.terms.body")}</Text>
       </ScrollView>
       <View style={styles.footer}>
-        <Checkbox
-          checked={checked}
-          onToggle={setChecked}
-          label={t("onboarding.terms.checkbox")}
-        />
-        <Button
-          label={t("onboarding.terms.cta")}
-          onPress={handleAgree}
-          disabled={!checked}
-          loading={submitting}
-        />
+        {onboardingCompleted ? (
+          <Button label={t("common.back")} onPress={() => router.back()} variant="secondary" />
+        ) : (
+          <>
+            <Checkbox
+              checked={checked}
+              onToggle={setChecked}
+              label={t("onboarding.terms.checkbox")}
+            />
+            <Button
+              label={t("onboarding.terms.cta")}
+              onPress={handleAgree}
+              disabled={!checked}
+              loading={submitting}
+            />
+          </>
+        )}
       </View>
     </ScreenContainer>
   );
