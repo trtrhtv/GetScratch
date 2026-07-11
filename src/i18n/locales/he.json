@@ -1,0 +1,196 @@
+{
+  "common": {
+    "appName": "גַרְדָן",
+    "currencySymbol": "₪",
+    "continue": "המשך",
+    "back": "חזרה",
+    "cancel": "ביטול",
+    "confirm": "אישור",
+    "save": "שמירה",
+    "done": "סיום",
+    "retry": "ניסיון נוסף",
+    "loading": "טוען...",
+    "close": "סגירה",
+    "distanceUnit": "ק\"מ",
+    "minutesShort": "דק׳"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "גַרְדָן",
+      "subtitle": "שירותי גירוד גב מקצועיים, לפי דרישה.",
+      "description": "התחברות עם נותני שירות עצמאיים באזורך תוך דקות.",
+      "cta": "המשך"
+    },
+    "signup": {
+      "title": "פתיחת חשבון",
+      "nameLabel": "שם מלא",
+      "namePlaceholder": "לדוגמה: דנה כהן",
+      "phoneLabel": "מספר טלפון",
+      "phonePlaceholder": "05X-XXXXXXX",
+      "sendCode": "שליחת קוד אימות",
+      "codeTitle": "אימות מספר טלפון",
+      "codeSubtitle": "הוזן קוד אימות שנשלח למספר {{phone}}",
+      "codeLabel": "קוד אימות",
+      "codeHint": "לצורכי הדגמה, הקוד הוא 000000",
+      "verify": "אימות והמשך",
+      "errorName": "יש להזין שם מלא.",
+      "errorPhone": "יש להזין מספר טלפון תקין.",
+      "errorCode": "קוד האימות שגוי. נסה שוב."
+    },
+    "avatar": {
+      "title": "בחירת תמונת פרופיל",
+      "subtitle": "התמונה תוצג לצד השני בעסקה.",
+      "cta": "המשך"
+    },
+    "terms": {
+      "title": "תנאי שימוש",
+      "heading": "תנאי שימוש ומדיניות פרטיות",
+      "body": "גַרְדָן הינה פלטפורמת תיווך בלבד, המחברת בין משתמשים המעוניינים בשירותי גירוד גב לבין משתמשים המציעים שירות זה. החברה אינה מעסיקה גרדנים, אינה צד לעסקה בין המשתמשים, ואינה נושאת באחריות לאיכות השירות, עומקו, משכו, או תוצאותיו.\n\nהתשלום עבור השירות מתבצע ישירות בין המשתמשים, במזומן או באמצעי תשלום ישיר, ואינו מסולק על ידי הפלטפורמה. הפלטפורמה אינה צד לעסקת התשלום ואינה אחראית לגבייתה.\n\nעל המשתמשים לנהוג באחריות ובזהירות סבירה בעת מפגש עם משתמש אחר שאינו מוכר להם אישית. השימוש באפליקציה כפוף לגילאי המשתמשים המותרים על פי חוק ולתנאים נוספים המפורטים במסמך המלא.\n\nהמשך השימוש באפליקציה מהווה הסכמה לתנאים אלה במלואם.",
+      "checkbox": "קראתי ואני מסכים/ה לתנאי השימוש ולמדיניות הפרטיות.",
+      "disclaimer": "גַרְדָן היא פלטפורמת תיווך בלבד ואינה צד לעסקה בין המשתמשים.",
+      "cta": "אישור והתחלה"
+    }
+  },
+  "home": {
+    "availableToggle": "אני זמין/ה לגרד",
+    "availableOn": "זמין/ה כעת",
+    "availableOff": "לא זמין/ה",
+    "orderCta": "הזמן גירוד",
+    "nearbyTitle": "גרדנים באזורך",
+    "emptyNearby": "אין גרדנים זמינים באזורך כרגע. נסה להרחיב את הרדיוס או לנסות שוב מאוחר יותר.",
+    "ratingLabel": "דירוג",
+    "scratchCountLabel": "גירודים שהושלמו",
+    "specialtyLabel": "התמחות",
+    "unavailableBadge": "לא זמין/ה",
+    "selectPrompt": "בחר גרדן מהרשימה כדי להתחיל.",
+    "webMapNotice": "תצוגת מפה זמינה באפליקציית המובייל. להלן רשימת הגרדנים באזורך.",
+    "incomingRequestBanner": "התקבלה בקשת גירוד חדשה"
+  },
+  "order": {
+    "create": {
+      "title": "פרטי ההזמנה",
+      "zoneLabel": "בחירת אזור בגב",
+      "zones": {
+        "upper": "גב עליון",
+        "lower": "גב תחתון",
+        "betweenShoulders": "בין השכמות",
+        "shoulders": "כתפיים"
+      },
+      "intensityLabel": "עוצמה",
+      "intensity": {
+        "gentle": "עדין",
+        "medium": "בינוני",
+        "strong": "חזק"
+      },
+      "durationLabel": "משך",
+      "duration": {
+        "two": "2 דקות",
+        "five": "5 דקות",
+        "ten": "10 דקות"
+      },
+      "priceLabel": "מחיר מוצע",
+      "raiseOffer": "העלה הצעה ב-₪5",
+      "submit": "שליחת הזמנה",
+      "errorZone": "יש לבחור אזור בגב.",
+      "targetLabel": "הזמנה מאת {{name}}"
+    },
+    "waiting": {
+      "title": "מאתר גרדן",
+      "subtitle": "נשלחה בקשה אל {{name}}",
+      "cancel": "ביטול הזמנה",
+      "declinedNotice": "הבקשה נדחתה. מחפשים גרדן נוסף.",
+      "raiseAndRetry": "העלה מחיר ונסה שוב"
+    },
+    "incoming": {
+      "title": "בקשת גירוד נכנסת",
+      "from": "מאת {{name}}",
+      "zone": "אזור: {{zone}}",
+      "intensity": "עוצמה: {{intensity}}",
+      "duration": "משך: {{duration}}",
+      "price": "מחיר מוצע: {{price}}",
+      "accept": "קבלה",
+      "decline": "דחייה",
+      "timeoutNotice": "הבקשה תפוג בעוד {{seconds}} שניות"
+    },
+    "active": {
+      "title": "הזמנה פעילה",
+      "statusAccepted": "ההזמנה אושרה",
+      "statusInProgress": "הגרדן בדרך אליך",
+      "statusInProgressAsScratcher": "בדרך ללקוח",
+      "eta": "זמן הגעה משוער: {{minutes}} {{unit}}",
+      "call": "התקשר",
+      "phoneRevealNotice": "מספר הטלפון גלוי מרגע אישור ההזמנה.",
+      "complete": "הגירוד הושלם",
+      "completeConfirmTitle": "לסמן את ההזמנה כהושלמה?",
+      "orderSummary": "אזור: {{zone}} · עוצמה: {{intensity}} · משך: {{duration}} · מחיר: {{price}}"
+    },
+    "chat": {
+      "placeholder": "כתיבת הודעה...",
+      "send": "שליחה",
+      "empty": "אין הודעות עדיין."
+    }
+  },
+  "rating": {
+    "title": "דירוג {{name}}",
+    "subtitle": "כיצד היה השירות?",
+    "tagsAsCustomer": ["מקצועי", "דייק בזמנים", "לחץ מדויק", "אדיב"],
+    "tagsAsScratcher": ["תקשורת ברורה", "המתין בסבלנות", "מיקום מדויק", "אדיב"],
+    "submit": "שליחת דירוג",
+    "skip": "דלג",
+    "thanks": "הדירוג נשלח. תודה."
+  },
+  "profile": {
+    "title": "פרופיל",
+    "myDataTitle": "הפרטים שלי",
+    "nameLabel": "שם",
+    "phoneLabel": "טלפון",
+    "ratingsTitle": "הדירוגים שלי",
+    "asCustomer": "כלקוח/ה",
+    "asScratcher": "כגרדן/ית",
+    "noRatingsYet": "עדיין אין דירוגים.",
+    "historyTitle": "היסטוריית הזמנות",
+    "emptyHistory": "טרם בוצעו הזמנות.",
+    "languageTitle": "שפה",
+    "languageHe": "עברית",
+    "languageEn": "English",
+    "termsLink": "תנאי שימוש",
+    "roleAsCustomer": "כלקוח/ה",
+    "roleAsScratcher": "כגרדן/ית"
+  },
+  "history": {
+    "statusCompleted": "הושלמה",
+    "statusRated": "הושלמה ודורגה",
+    "roleCustomer": "כלקוח/ה",
+    "roleScratcher": "כגרדן/ית",
+    "withLabel": "עם {{name}}"
+  },
+  "errors": {
+    "generic": "משהו השתבש. נסה שוב.",
+    "notFound": "העמוד המבוקש לא נמצא."
+  },
+  "bot": {
+    "asScratcher": {
+      "declineReasons": [
+        "לא זמין/ה כרגע.",
+        "מחוץ לטווח השירות הנוכחי.",
+        "בעיצומו של גירוד אחר.",
+        "העוצמה המבוקשת אינה בהתמחות."
+      ],
+      "chat": {
+        "onWay": "בדרך אליך. מגיע/ה בעוד כ-{{minutes}} דקות.",
+        "arrived": "הגעתי. אני בחוץ.",
+        "starting": "מתחיל/ה בעדינות. עדכן/י אם העוצמה אינה מתאימה.",
+        "checkIn": "העוצמה מספקת מבחינתך?",
+        "finishing": "מסיים/ה בעוד רגע.",
+        "done": "הגירוד הושלם. תודה על ההזמנה."
+      }
+    },
+    "asCustomer": {
+      "chat": {
+        "confirmed": "תודה שאישרת, ממתין/ה לך.",
+        "eta": "מעולה, אעדכן כשאגיע.",
+        "thanks": "תודה רבה, השירות היה מעולה."
+      }
+    }
+  }
+}

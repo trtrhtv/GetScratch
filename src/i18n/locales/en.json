@@ -1,0 +1,196 @@
+{
+  "common": {
+    "appName": "Gardan",
+    "currencySymbol": "₪",
+    "continue": "Continue",
+    "back": "Back",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "done": "Done",
+    "retry": "Retry",
+    "loading": "Loading...",
+    "close": "Close",
+    "distanceUnit": "km",
+    "minutesShort": "min"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Gardan",
+      "subtitle": "Professional back-scratching services, on demand.",
+      "description": "Connect with independent service providers in your area within minutes.",
+      "cta": "Continue"
+    },
+    "signup": {
+      "title": "Create account",
+      "nameLabel": "Full name",
+      "namePlaceholder": "e.g. Dana Cohen",
+      "phoneLabel": "Phone number",
+      "phonePlaceholder": "05X-XXXXXXX",
+      "sendCode": "Send verification code",
+      "codeTitle": "Verify phone number",
+      "codeSubtitle": "Enter the verification code sent to {{phone}}",
+      "codeLabel": "Verification code",
+      "codeHint": "For demonstration purposes, the code is 000000",
+      "verify": "Verify and continue",
+      "errorName": "Please enter your full name.",
+      "errorPhone": "Please enter a valid phone number.",
+      "errorCode": "Incorrect verification code. Please try again."
+    },
+    "avatar": {
+      "title": "Choose profile photo",
+      "subtitle": "This photo will be shown to the other party in a transaction.",
+      "cta": "Continue"
+    },
+    "terms": {
+      "title": "Terms of Service",
+      "heading": "Terms of Service and Privacy Policy",
+      "body": "Gardan is solely an intermediary platform connecting users seeking back-scratching services with users offering such services. The company does not employ scratchers, is not a party to any transaction between users, and bears no responsibility for the quality, depth, duration, or outcome of the service.\n\nPayment for the service is made directly between users, in cash or by direct payment method, and is not processed by the platform. The platform is not a party to the payment transaction and is not responsible for its collection.\n\nUsers must exercise reasonable care and caution when meeting another user who is not personally known to them. Use of the application is subject to applicable legal age requirements and additional terms detailed in the full document.\n\nContinued use of the application constitutes full agreement to these terms.",
+      "checkbox": "I have read and agree to the Terms of Service and Privacy Policy.",
+      "disclaimer": "Gardan is solely an intermediary platform and is not a party to transactions between users.",
+      "cta": "Agree and start"
+    }
+  },
+  "home": {
+    "availableToggle": "I'm available to scratch",
+    "availableOn": "Available now",
+    "availableOff": "Not available",
+    "orderCta": "Order a scratch",
+    "nearbyTitle": "Scratchers near you",
+    "emptyNearby": "No scratchers available in your area right now. Try expanding your radius or check again later.",
+    "ratingLabel": "Rating",
+    "scratchCountLabel": "Scratches completed",
+    "specialtyLabel": "Specialty",
+    "unavailableBadge": "Unavailable",
+    "selectPrompt": "Select a scratcher from the list to get started.",
+    "webMapNotice": "Map view is available in the mobile app. Below is the list of scratchers in your area.",
+    "incomingRequestBanner": "New scratch request received"
+  },
+  "order": {
+    "create": {
+      "title": "Order details",
+      "zoneLabel": "Select back zone",
+      "zones": {
+        "upper": "Upper back",
+        "lower": "Lower back",
+        "betweenShoulders": "Between shoulder blades",
+        "shoulders": "Shoulders"
+      },
+      "intensityLabel": "Intensity",
+      "intensity": {
+        "gentle": "Gentle",
+        "medium": "Medium",
+        "strong": "Strong"
+      },
+      "durationLabel": "Duration",
+      "duration": {
+        "two": "2 minutes",
+        "five": "5 minutes",
+        "ten": "10 minutes"
+      },
+      "priceLabel": "Proposed price",
+      "raiseOffer": "Raise offer by ₪5",
+      "submit": "Submit order",
+      "errorZone": "Please select a back zone.",
+      "targetLabel": "Order from {{name}}"
+    },
+    "waiting": {
+      "title": "Finding a scratcher",
+      "subtitle": "Request sent to {{name}}",
+      "cancel": "Cancel order",
+      "declinedNotice": "The request was declined. Looking for another scratcher.",
+      "raiseAndRetry": "Raise price and retry"
+    },
+    "incoming": {
+      "title": "Incoming scratch request",
+      "from": "From {{name}}",
+      "zone": "Zone: {{zone}}",
+      "intensity": "Intensity: {{intensity}}",
+      "duration": "Duration: {{duration}}",
+      "price": "Proposed price: {{price}}",
+      "accept": "Accept",
+      "decline": "Decline",
+      "timeoutNotice": "Request expires in {{seconds}} seconds"
+    },
+    "active": {
+      "title": "Active order",
+      "statusAccepted": "Order confirmed",
+      "statusInProgress": "Your scratcher is on the way",
+      "statusInProgressAsScratcher": "On the way to customer",
+      "eta": "Estimated arrival: {{minutes}} {{unit}}",
+      "call": "Call",
+      "phoneRevealNotice": "Phone number is visible once the order is confirmed.",
+      "complete": "Scratch completed",
+      "completeConfirmTitle": "Mark this order as completed?",
+      "orderSummary": "Zone: {{zone}} · Intensity: {{intensity}} · Duration: {{duration}} · Price: {{price}}"
+    },
+    "chat": {
+      "placeholder": "Type a message...",
+      "send": "Send",
+      "empty": "No messages yet."
+    }
+  },
+  "rating": {
+    "title": "Rate {{name}}",
+    "subtitle": "How was the service?",
+    "tagsAsCustomer": ["Professional", "On time", "Precise pressure", "Courteous"],
+    "tagsAsScratcher": ["Clear communication", "Waited patiently", "Accurate location", "Courteous"],
+    "submit": "Submit rating",
+    "skip": "Skip",
+    "thanks": "Rating submitted. Thank you."
+  },
+  "profile": {
+    "title": "Profile",
+    "myDataTitle": "My details",
+    "nameLabel": "Name",
+    "phoneLabel": "Phone",
+    "ratingsTitle": "My ratings",
+    "asCustomer": "As customer",
+    "asScratcher": "As scratcher",
+    "noRatingsYet": "No ratings yet.",
+    "historyTitle": "Order history",
+    "emptyHistory": "No orders yet.",
+    "languageTitle": "Language",
+    "languageHe": "עברית",
+    "languageEn": "English",
+    "termsLink": "Terms of Service",
+    "roleAsCustomer": "As customer",
+    "roleAsScratcher": "As scratcher"
+  },
+  "history": {
+    "statusCompleted": "Completed",
+    "statusRated": "Completed and rated",
+    "roleCustomer": "As customer",
+    "roleScratcher": "As scratcher",
+    "withLabel": "With {{name}}"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "notFound": "The requested page was not found."
+  },
+  "bot": {
+    "asScratcher": {
+      "declineReasons": [
+        "Not available right now.",
+        "Outside current service range.",
+        "Currently on another scratch.",
+        "Requested intensity is outside specialty."
+      ],
+      "chat": {
+        "onWay": "On the way to you. Arriving in about {{minutes}} minutes.",
+        "arrived": "I've arrived. I'm outside.",
+        "starting": "Starting gently. Let me know if the intensity isn't right.",
+        "checkIn": "Is the intensity working for you?",
+        "finishing": "Finishing up in a moment.",
+        "done": "Scratch completed. Thank you for your order."
+      }
+    },
+    "asCustomer": {
+      "chat": {
+        "confirmed": "Thanks for confirming, waiting for you.",
+        "eta": "Great, I'll update you when I arrive.",
+        "thanks": "Thank you, the service was excellent."
+      }
+    }
+  }
+}
