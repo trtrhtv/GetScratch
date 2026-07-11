@@ -261,6 +261,61 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   non-digits) for the mock signup form — good enough for a fake-SMS demo flow,
   not meant to be a real phone-validation library.
 
-## Phase 5 — Home screen + map/list + availability toggle
+## Phase 5 — Home screen + map/list + availability toggle (done)
+
+- `app/home.tsx`: replaces the Phase 4 placeholder — top bar (menu / wordmark /
+  profile icon), the availability toggle wired to the store, a nearby panel,
+  and a bottom sheet showing the selected scratcher with the dominant "הזמן
+  גירוד" CTA (or a "pick someone" banner when nothing's selected yet). Selects
+  the first nearby scratcher automatically once the list loads, and keeps the
+  selection stable across updates unless the currently-selected one drops out.
+- **`react-native-maps` kept fully out of the web bundle** via Metro's
+  platform-extension convention: `NearbyPanel.native.tsx` (real `MapView` with
+  avatar-styled markers) and `NearbyPanel.web.tsx` (the distance-sorted list
+  fallback, exactly per `DESIGN.md`'s wireframe) — imported from `home.tsx` as
+  a bare `@/components/NearbyPanel`, which Metro resolves per-platform.
+  Confirmed empirically, not just assumed: grepped the exported web bundle for
+  `react-native-maps`-specific native-module strings — zero matches.
+- `src/components/ScratcherListRow.tsx` / `SelectedScratcherCard.tsx`: the two
+  presentational pieces for a scratcher (compact row vs. the bigger bottom
+  card), both reading avatar/rating/specialty off `ScratcherProfile`.
+- `src/utils/specialtyLabels.ts` + `src/utils/geo.ts`: extracted the
+  zone/intensity → i18n-key maps (previously private to `ContourBackMap`, now
+  shared with the list row/card) and a shared mock "my location" constant
+  matching the seed bots' placement center.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `jest` 22/22 (unaffected) · `expo export -p web`
+  succeeds, with the `react-native-maps` exclusion confirmed via bundle grep.
+- **Drove it in a real browser again**: fast-forwarded onboarding, landed on
+  Home, waited out the mock's real 1.5–8s subscription delay, confirmed the
+  nearby list renders correctly (bot names, initials avatars, ratings,
+  specialties, distances), toggled availability and watched it flip to the
+  active teal state, selected a scratcher and confirmed the bottom card +
+  amber CTA render correctly. No console errors.
+
+### Out-of-plan decisions / bugs caught by actually testing
+
+- **`tsconfig`'s `moduleSuffixes` broke third-party type resolution — caught
+  before it shipped, not after**: the textbook fix for TS not understanding
+  Metro's `.native.tsx`/`.web.tsx` convention is adding `moduleSuffixes` to
+  `compilerOptions`. Doing that made `tsc` suddenly report `lucide-react-native`
+  icons' `color` prop as invalid everywhere in the app (`Checkbox`,
+  `RatingStars`, `ScratcherListRow`, `SelectedScratcherCard`, `home.tsx`) —
+  `moduleSuffixes` changed how TS resolves that package's `exports` conditions
+  project-wide, not just our own files. Reverted it and used the actual
+  standard RN/Metro pattern instead: a plain `NearbyPanel.tsx` that only
+  re-exports the `.native` implementation for `tsc`'s benefit — Metro always
+  prefers the platform-suffixed sibling over a plain file at bundle time, so
+  this shim is never actually loaded at runtime on any platform. Verified the
+  fix didn't regress by re-running the full `tsc` pass (0 errors, no lucide
+  fallout) and re-confirming the web bundle still excludes
+  `react-native-maps`.
+- First timing pass of the browser test showed an empty nearby list and looked
+  like a bug at a glance — turned out to be well within the mock's normal
+  1.5–8s random subscription delay (the test's fixed 3s wait was occasionally
+  too short). Re-ran with a longer wait to confirm before concluding anything
+  was actually wrong; nothing was.
+
+## Phase 6 — Full order flow incl. scratcher side
 
 _pending_

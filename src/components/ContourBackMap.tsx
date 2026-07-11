@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import Svg, { Path } from "react-native-svg";
 import { color, font, fontSize, radius, space } from "@/theme/tokens";
 import type { BackZone } from "@/backend/types";
+import { ZONE_LABEL_KEYS } from "@/utils/specialtyLabels";
 
 // אלמנט החתימה (DESIGN.md §4) — קונטור גב מופשט (לא איור מגוף אדם), פונקציונלי
 // כבורר-אזור. משמש רק כאן ובמסך ההמתנה (רדאר) — לא בשום מקום אחר באפליקציה.
@@ -12,13 +13,6 @@ const ZONE_SHAPES: { id: BackZone; d: string }[] = [
   { id: "upper", d: "M20,58 Q50,44 80,58 L80,76 Q50,62 20,76 Z" },
   { id: "lower", d: "M20,76 Q50,62 80,76 L80,94 Q50,80 20,94 Z" },
 ];
-
-const ZONE_LABEL_KEYS = {
-  upper: "order.create.zones.upper",
-  lower: "order.create.zones.lower",
-  betweenShoulders: "order.create.zones.betweenShoulders",
-  shoulders: "order.create.zones.shoulders",
-} as const satisfies Record<BackZone, string>;
 
 export default function ContourBackMap({
   selected,

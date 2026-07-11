@@ -1,35 +1,109 @@
-import { StyleSheet, Text } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { router } from "expo-router";
+import { Menu, UserRound } from "lucide-react-native";
 import ScreenContainer from "@/components/ScreenContainer";
-import { color, font, fontSize } from "@/theme/tokens";
+import AvailabilityToggle from "@/components/AvailabilityToggle";
+import NearbyPanel from "@/components/NearbyPanel";
+import SelectedScratcherCard from "@/components/SelectedScratcherCard";
+import Banner from "@/components/Banner";
+import { color, font, fontSize, space } from "@/theme/tokens";
 import { useAppStore } from "@/store/useAppStore";
+import backend from "@/backend/mock";
+import type { ScratcherProfile } from "@/backend/types";
+import { MOCK_MY_LOCATION } from "@/utils/geo";
 
-// שלד זמני לשלב 4 — שלב 5 יבנה כאן את מסך הבית האמיתי (מפה/רשימה, טוגל זמינות).
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const name = useAppStore((s) => s.user?.name);
+  const isAvailable = useAppStore((s) => s.user?.isAvailable ?? false);
+  const setAvailability = useAppStore((s) => s.setAvailability);
+
+  const [scratchers, setScratchers] = useState<ScratcherProfile[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = backend.presence.subscribeNearby(MOCK_MY_LOCATION, (list) => {
+      setScratchers(list);
+      setSelectedId((current) => {
+        if (current && list.some((s) => s.id === current)) return current;
+        return list[0]?.id ?? null;
+      });
+    });
+    return unsubscribe;
+  }, []);
+
+  const selected = scratchers.find((s) => s.id === selectedId) ?? null;
+
+  const handleOrder = useCallback(() => {
+    if (!selected) return;
+    router.push({ pathname: "/order/create", params: { scratcherId: selected.id } });
+  }, [selected]);
 
   return (
-    <ScreenContainer>
-      <Text style={styles.title}>{t("common.appName")}</Text>
-      {name ? <Text style={styles.subtitle}>{name}</Text> : null}
+    <ScreenContainer padded={false}>
+      <View style={styles.topBar}>
+        <Pressable accessibilityRole="button" hitSlop={8}>
+          <Menu size={22} color={color.ink} />
+        </Pressable>
+        <Text style={styles.wordmark}>{t("common.appName")}</Text>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => router.push("/profile")}
+        >
+          <UserRound size={22} color={color.ink} />
+        </Pressable>
+      </View>
+
+      <View style={styles.toggleWrap}>
+        <AvailabilityToggle isAvailable={isAvailable} onToggle={setAvailability} />
+      </View>
+
+      <View style={styles.panel}>
+        <NearbyPanel scratchers={scratchers} selectedId={selectedId} onSelect={setSelectedId} />
+      </View>
+
+      <View style={styles.bottomSheet}>
+        {selected ? (
+          <SelectedScratcherCard scratcher={selected} onOrder={handleOrder} />
+        ) : (
+          <Banner text={t("home.selectPrompt")} />
+        )}
+      </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingStart: space.lg,
+    paddingEnd: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.sm,
+  },
+  wordmark: {
     fontFamily: font.display,
     fontSize: fontSize.title,
     color: color.ink,
-    marginTop: 24,
-    textAlign: "center",
   },
-  subtitle: {
-    fontFamily: font.bodyRegular,
-    fontSize: fontSize.body,
-    color: color.inkMuted,
-    textAlign: "center",
-    marginTop: 8,
+  toggleWrap: {
+    paddingStart: space.lg,
+    paddingEnd: space.lg,
+    marginBottom: space.md,
+  },
+  panel: {
+    flex: 1,
+    marginStart: space.lg,
+    marginEnd: space.lg,
+    marginBottom: space.md,
+  },
+  bottomSheet: {
+    paddingStart: space.lg,
+    paddingEnd: space.lg,
+    paddingBottom: space.lg,
   },
 });
