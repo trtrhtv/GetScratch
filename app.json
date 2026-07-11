@@ -30,7 +30,8 @@
       [
         "react-native-maps",
         {}
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

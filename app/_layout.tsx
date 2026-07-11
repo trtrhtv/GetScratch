@@ -2,19 +2,23 @@ import { useCallback, useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n";
 import { initLanguageAtBoot } from "@/i18n/languageSwitch";
+import { useAppFonts } from "@/theme/fonts";
 import { theme } from "@/theme/tokens";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
-  const [ready, setReady] = useState(false);
+  const [languageReady, setLanguageReady] = useState(false);
+  const fontsReady = useAppFonts();
+  const ready = languageReady && fontsReady;
 
   useEffect(() => {
-    initLanguageAtBoot().finally(() => setReady(true));
+    initLanguageAtBoot().finally(() => setLanguageReady(true));
   }, []);
 
   const onLayoutRootView = useCallback(async () => {
@@ -29,10 +33,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <SafeAreaProvider>
         <I18nextProvider i18n={i18n}>
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: theme.color.background },
+              contentStyle: { backgroundColor: theme.color.paper },
               animation: "fade",
             }}
           />

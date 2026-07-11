@@ -44,6 +44,43 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   `export`) by the orchestrating session rather than trusted from the subagent's
   own report.
 
-## Phase 1.5 — Design system
+## Phase 1.5 — Design system (done)
+
+- `DESIGN.md`: thesis (Israeli mobility-dispatch × physio-clinic booking register,
+  played completely straight), 6-color palette (cool paper/graphite-ink base, deep
+  clinical teal primary, golden-amber single CTA accent, sage/brick status colors),
+  typography (display: Suez One; body: Assistant — both picked after explicitly
+  rejecting Rubik and Heebo as the generic-Hebrew-UI default, and IBM Plex Sans
+  Hebrew / Miriam Libre as considered alternatives), one signature element (the
+  Contour Back Map — used functionally for zone-selection and as the waiting-screen
+  loading motif, nowhere else), and an ASCII wireframe of Home matching the
+  Uber/Bolt/Gett/Wolt bottom-sheet-over-map convention.
+- Self-critique gate (§6.2, documented inside `DESIGN.md`): caught the accent amber
+  sitting too close to the blacklisted clay/terracotta hue on the first pass
+  (`#D9853A` vs. the flagged `#D97757`) and shifted it to `#E8892C`, with the
+  distance written into the palette table so it's checkable later. Typography,
+  signature element, and layout convention held up under the "would a generic
+  services brief land here" test and were kept as-is.
+- Implemented as code: `src/theme/tokens.ts` (color/font/fontSize/lineHeight/space/
+  radius scales — the single source all components must read from) and
+  `src/theme/fonts.ts` (loads `@expo-google-fonts/assistant` +
+  `@expo-google-fonts/suez-one`, gated into the root layout's `ready` state
+  alongside language init so there's no default-font flash on cold start).
+- Verified visually, not just by gate: served the static web export locally and
+  screenshotted the placeholder screen with Playwright/Chromium — confirmed the
+  Suez One wordmark, Assistant body text, cool paper background and RTL alignment
+  all render as designed before moving on.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `expo export -p web` succeeds with both font families
+  bundled as local assets (no runtime font fetch).
+
+### Out-of-plan decisions
+
+- Font delivery via `@expo-google-fonts/*` npm packages (bundled `.ttf` assets)
+  rather than a runtime Google Fonts fetch — `fonts.gstatic.com` is not on this
+  session's egress allowlist, and bundling is the correct approach for a native
+  app anyway (no network dependency to render text).
+
+## Phase 2 — Backend adapter + mock auth/presence
 
 _pending_
