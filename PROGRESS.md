@@ -206,6 +206,61 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   the Phase 2 contract and the i18n keys prepared in Phase 1 covered everything
   the bot engine needed.
 
-## Phase 4 — Onboarding + Terms of Service
+## Phase 4 — Onboarding + Terms of Service (done)
+
+- `src/store/useAppStore.ts`: thin Zustand store wrapping the `BackendAdapter`
+  singleton (`user`, `onboardingCompleted`, `termsAccepted`, `hydrated` +
+  actions) — every action writes through the adapter first and only then
+  updates local state from its response, so the adapter stays the source of
+  truth.
+- Screens: `app/onboarding/welcome.tsx` (wordmark + CTA), `signup.tsx` (single
+  route, two internal sub-phases: name+phone → demo-code verification, matching
+  the spec's "3 screens" count), `avatar.tsx` (grid picker using the Phase 2
+  `AvatarPicker`), `terms.tsx` (scrollable ToS text + mandatory checkbox
+  gating the CTA — checking it and confirming calls
+  `acceptTermsAndFinishOnboarding()`, which sets both flags together since
+  terms-acceptance is the last onboarding step).
+- `app/index.tsx`: a routing gate (not a real screen) — redirects to onboarding
+  or `/home` based on store state.
+- `src/components/Checkbox.tsx`: small reusable primitive for the terms
+  checkbox.
+- `app/home.tsx`: minimal placeholder (just enough for the redirect target to
+  resolve) — Phase 5 replaces its content with the real Home screen.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `jest` 22/22 (unaffected) · `expo export -p web`
+  succeeds.
+- **Drove the entire flow in a real browser** (Playwright against the static
+  web export, not just build-success): welcome → signup → demo-code verify →
+  avatar pick → terms accept → lands on Home showing the signed-up user's name
+  → hard reload → still on Home, onboarding correctly skipped. Screenshotted
+  every step.
+
+### Out-of-plan decisions / bugs caught by actually testing
+
+- **Found and fixed a real hydration bug via the browser test, not by
+  inspection**: store hydration (`useAppStore.hydrate()`) was only wired into
+  `app/index.tsx`'s mount effect. That screen only mounts when the app boots
+  at `/` — a hard reload or deep link landing directly on `/home` (or any other
+  authenticated route) skipped it entirely, leaving `user` stuck at `null`
+  even though a valid session was persisted in AsyncStorage. First reload
+  screenshot showed the wordmark with the user's name silently missing.
+  Fixed by moving hydration into the root layout's boot sequence (alongside
+  the existing language/font gating in `app/_layout.tsx`) so it runs on every
+  app boot regardless of entry route; `index.tsx` now just reads the
+  already-hydrated state. Re-ran the full flow after the fix and confirmed the
+  name survives a hard reload.
+- **Local test-server gotcha, not an app bug**: the first browser-test pass
+  used a plain `python -m http.server` to serve the static export, which has
+  no SPA fallback — reloading at `/home` 404'd before the bug above was even
+  reachable. Wrote a 3-line Node static server with SPA fallback (serve
+  `index.html` for any unmatched path) to test correctly; this is what any
+  real static host (and `expo start --web`'s dev server) already does, so it
+  doesn't affect the deployed app, only how a *local* export must be served to
+  test a deep-linked reload.
+- Simple digit-based Israeli mobile validation (`05\d{8}` after stripping
+  non-digits) for the mock signup form — good enough for a fake-SMS demo flow,
+  not meant to be a real phone-validation library.
+
+## Phase 5 — Home screen + map/list + availability toggle
 
 _pending_
