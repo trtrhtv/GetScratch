@@ -6,6 +6,7 @@ import ScreenContainer from "@/components/ScreenContainer";
 import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Avatar from "@/components/Avatar";
+import LoadingView from "@/components/LoadingView";
 import { color, font, fontSize, space } from "@/theme/tokens";
 import backend from "@/backend/mock";
 import { MOCK_MY_LOCATION } from "@/utils/geo";
@@ -67,7 +68,7 @@ export default function IncomingRequestModal() {
     }
   }
 
-  if (!order) return null;
+  if (!order) return <LoadingView />;
 
   return (
     <ScreenContainer>

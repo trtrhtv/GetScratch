@@ -474,6 +474,53 @@ assumed from the implementation.
   itself (`onPress={() => router.push("/profile")}`) is unchanged and correct;
   this was purely a test-authoring workaround, not a product fix.
 
-## Phase 9 — Polish pass
+## Phase 9 — Polish pass (done)
+
+- **Animation audit**: grepped the whole codebase for `Animated.` usage —
+  only `RadarPulse` (the sanctioned waiting-screen motif) and the Stack's
+  built-in screen-transition fade exist. No ambient/atmosphere animation
+  anywhere, per DESIGN.md §6.4's explicit warning against it.
+- **Loading-state audit**: `active.tsx`, `incoming-request.tsx`, and
+  `profile.tsx` each had a bare `if (!x) return null;` guard while their
+  initial async fetch was in flight — a blank paper-colored flash instead of
+  a styled loading state. Added `src/components/LoadingView.tsx` (centered
+  `ActivityIndicator` in brand slate) and used it in all three.
+- **Hardcoded-string audit**: grepped `app/` and `src/components/` for Hebrew
+  text and English text directly inside `<Text>` outside `t(...)` calls —
+  zero hits (the only literal characters found were the `·` separator dot,
+  language-neutral punctuation, not translatable content).
+- **Emoji audit**: scanned both locale JSON files with a proper emoji
+  Unicode-range regex (an earlier ad-hoc check falsely flagged ordinary
+  Hebrew punctuation like `״`/`׳` and the `₪` sign as suspect — verified the
+  false positive before trusting the result) — zero emoji in any UI string,
+  consistent with DESIGN.md §6.5.
+- **Tone read-through**: read both `he.json` and `en.json` end to end.
+  Consistently dry/corporate register throughout, no jokes, sentence-case
+  English, no register slips between sections.
+
+### Ran every flow twice, end to end, in a real browser — not just per-phase
+
+A combined run beyond what any single phase's own testing covered: full
+onboarding → Home → order-from-a-bot (Hebrew) → active → complete → rate →
+back to Home → **switched to English via Profile** → Home again → a
+**second full order cycle entirely in English** (zone/intensity/duration
+selection, submit, waiting, active, complete, rate) → back to Home.
+Zero console errors or exceptions across the entire two-pass run. This was
+the first time the order-creation flow had actually been exercised in
+English — confirmed the `ContourBackMap` zone legend, segmented controls,
+back-chevron direction, and price stepper all work correctly under a live
+language switch, not just that the Hebrew path works.
+
+### Out-of-plan decisions
+
+- No functional bugs surfaced in this pass (Phases 5–8's live testing had
+  already caught and fixed the real ones — the hydration bug, the
+  `moduleSuffixes` type-resolution regression, and the overlapping-modal
+  polling bug). This phase was verification-only: confirming the invariants
+  DESIGN.md and the plan's own polish checklist call for actually hold,
+  rather than assuming they did from having followed the rules while
+  writing each screen.
+
+## Phase 10 — README + final docs
 
 _pending_

@@ -10,6 +10,7 @@ import RatingStars from "@/components/RatingStars";
 import SegmentedControl from "@/components/SegmentedControl";
 import HistoryRow from "@/components/HistoryRow";
 import Banner from "@/components/Banner";
+import LoadingView from "@/components/LoadingView";
 import { color, font, fontSize, space } from "@/theme/tokens";
 import { useAppStore } from "@/store/useAppStore";
 import backend from "@/backend/mock";
@@ -50,7 +51,7 @@ export default function ProfileScreen() {
     );
   }, [user]);
 
-  if (!user) return null;
+  if (!user) return <LoadingView />;
 
   const languageOptions = [
     { value: "he" as const, label: t("profile.languageHe") },

@@ -7,6 +7,7 @@ import Button from "@/components/Button";
 import Card from "@/components/Card";
 import Avatar from "@/components/Avatar";
 import ChatThread from "@/components/ChatThread";
+import LoadingView from "@/components/LoadingView";
 import { color, font, fontSize, space } from "@/theme/tokens";
 import { useAppStore } from "@/store/useAppStore";
 import backend from "@/backend/mock";
@@ -47,7 +48,7 @@ export default function ActiveOrderScreen() {
       .then((list) => setCounterparty(list.find((s) => s.id === counterpartyId) ?? null));
   }, [order, myUserId]);
 
-  if (!order) return null;
+  if (!order) return <LoadingView />;
 
   const iAmScratcher = order.scratcherId === myUserId;
   const statusKey = iAmScratcher ? "order.active.statusInProgressAsScratcher" : "order.active.statusInProgress";
