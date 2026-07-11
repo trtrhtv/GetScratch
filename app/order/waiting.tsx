@@ -11,6 +11,10 @@ import backend from "@/backend/mock";
 import { MOCK_MY_LOCATION } from "@/utils/geo";
 import type { Order, ScratcherProfile } from "@/backend/types";
 
+// פולינג קליל כרשת-ביטחון לצד ה-subscribe: מרענן את מצב ההזמנה כל 3 שניות,
+// כך שמסך ההמתנה מתעדכן תוך זמן קצר גם אם התראת ה-push המדומה מתעכבת.
+const POLL_INTERVAL_MS = 3000;
+
 export default function WaitingScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ orderId: string; scratcherId: string }>();
@@ -27,10 +31,9 @@ export default function WaitingScreen() {
     });
   }, [params.scratcherId]);
 
-  useEffect(() => {
-    navigatedRef.current = false;
-    backend.orders.getById(currentOrderId).then(setOrder);
-    const unsubscribe = backend.orders.subscribeOrder(currentOrderId, (updated) => {
+  const applyUpdate = useCallback(
+    (updated: Order | null) => {
+      if (!updated) return;
       setOrder(updated);
       if (updated.status === "accepted" && !navigatedRef.current) {
         navigatedRef.current = true;
@@ -39,9 +42,28 @@ export default function WaitingScreen() {
           params: { orderId: updated.id, scratcherId: params.scratcherId },
         });
       }
+    },
+    [params.scratcherId]
+  );
+
+  useEffect(() => {
+    navigatedRef.current = false;
+    let cancelled = false;
+    backend.orders.getById(currentOrderId).then((o) => {
+      if (!cancelled) applyUpdate(o);
     });
-    return unsubscribe;
-  }, [currentOrderId, params.scratcherId]);
+    const unsubscribe = backend.orders.subscribeOrder(currentOrderId, applyUpdate);
+    const poll = setInterval(() => {
+      backend.orders.getById(currentOrderId).then((o) => {
+        if (!cancelled) applyUpdate(o);
+      });
+    }, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      unsubscribe();
+    };
+  }, [currentOrderId, applyUpdate]);
 
   const handleCancel = useCallback(async () => {
     await backend.orders.cancel(currentOrderId);

@@ -387,8 +387,11 @@ export class MockBackend implements BackendAdapter {
 
     updateAvatar: async (avatarId: AvatarId) => {
       await this.ensureLoaded();
-      const user = this.requireCurrentUser();
-      user.avatarId = avatarId;
+      const current = this.requireCurrentUser();
+      const user = this.replaceUser(current.id, (u) => {
+        u.avatarId = avatarId;
+      });
+      if (!user) throw new Error("Unknown user.");
       await this.persist();
       return user;
     },
@@ -411,8 +414,11 @@ export class MockBackend implements BackendAdapter {
   readonly presence: PresenceApi = {
     setAvailability: async (isAvailable: boolean) => {
       await this.ensureLoaded();
-      const user = this.requireCurrentUser();
-      user.isAvailable = isAvailable;
+      const current = this.requireCurrentUser();
+      const user = this.replaceUser(current.id, (u) => {
+        u.isAvailable = isAvailable;
+      });
+      if (!user) throw new Error("Unknown user.");
       await this.persist();
       // Bot-originated customer requests only flow while the user is available.
       if (isAvailable) this.startCustomerRequestLoop();
@@ -639,14 +645,38 @@ export class MockBackend implements BackendAdapter {
     },
   };
 
+  // בונה עותק חדש ורק אז ממטב — לעולם לא ממטבים object קיים ב-state במקום.
+  // סיבה קריטית, נתפסה בבדיקה חיה: מסכי UI ששומרים ישות ב-state מקומי
+  // (למשל דרך getById בעליה הראשונית) מחזיקים את אותו ה-reference בדיוק
+  // שב-this.state. מיטוב במקום ואז setState/set() עם אותו reference נבלם על
+  // ידי הבדיקה Object.is של React/Zustand (התוכן השתנה, ה-reference לא) —
+  // המצב מתעדכן נכון בפנים אבל לעולם לא נראה על המסך בלי רענון. כל מיטוב
+  // ישות משותפת (Order/User) עובר דרך replaceOrder/replaceUser בשביל זה.
+  private replaceOrder(orderId: string, mutate: (order: Order) => void): Order | null {
+    const existing = this.state.orders[orderId];
+    if (!existing) return null;
+    const order = { ...existing };
+    mutate(order);
+    this.state.orders[orderId] = order;
+    return order;
+  }
+
+  private replaceUser(userId: string, mutate: (user: User) => void): User | null {
+    const existing = this.state.users[userId];
+    if (!existing) return null;
+    const user = { ...existing };
+    mutate(user);
+    this.state.users[userId] = user;
+    return user;
+  }
+
   private async mutateOrder(
     orderId: string,
     mutate: (order: Order) => void,
   ): Promise<Order> {
     await this.ensureLoaded();
-    const order = this.state.orders[orderId];
+    const order = this.replaceOrder(orderId, mutate);
     if (!order) throw new Error("Unknown order.");
-    mutate(order);
     await this.persist();
     this.scheduleEmit(`order:${orderId}`, () => this.state.orders[orderId]);
     return order;
@@ -751,9 +781,9 @@ export class MockBackend implements BackendAdapter {
       text,
       createdAt: Date.now(),
     };
-    const thread = this.state.messages[orderId] ?? [];
-    thread.push(message);
-    this.state.messages[orderId] = thread;
+    // מערך חדש, לא push על הקיים במקום — אותה סיבה כמו replaceOrder/replaceUser.
+    const existingThread = this.state.messages[orderId] ?? [];
+    this.state.messages[orderId] = [...existingThread, message];
     await this.persist();
     this.scheduleEmit(`chat:${orderId}`, () => this.state.messages[orderId] ?? []);
     return message;
@@ -798,23 +828,26 @@ export class MockBackend implements BackendAdapter {
       this.state.ratings.push(rating);
 
       // If the ratee is a real user, fold the score into their summary.
-      const ratee = this.state.users[input.rateeId];
-      if (ratee) {
-        const rateeRole = oppositeRole(input.raterRole);
-        const summary =
-          rateeRole === "scratcher"
-            ? ratee.ratings.asScratcher
-            : ratee.ratings.asCustomer;
-        const total = summary.average * summary.count + input.stars;
-        summary.count += 1;
-        summary.average = Math.round((total / summary.count) * 100) / 100;
-      }
+      // בונים ratings/summary חדשים — לא ממטבים מקוננים במקום (replaceUser
+      // רק שוכפל את user ברמה השטוחה; ה-summary המקונן עדיין אותו reference
+      // אם לא נבנה מפורשות).
+      const rateeRole = oppositeRole(input.raterRole);
+      this.replaceUser(input.rateeId, (u) => {
+        const key = rateeRole === "scratcher" ? "asScratcher" : "asCustomer";
+        const current = u.ratings[key];
+        const nextCount = current.count + 1;
+        const nextAverage =
+          Math.round(((current.average * current.count + input.stars) / nextCount) * 100) / 100;
+        u.ratings = { ...u.ratings, [key]: { average: nextAverage, count: nextCount } };
+      });
 
-      // Move a finished order into the "rated" state.
-      const order = this.state.orders[input.orderId];
-      if (order && order.status === "completed") {
-        order.status = "rated";
-        this.scheduleEmit(`order:${order.id}`, () => this.state.orders[order.id]);
+      // Move a finished order into the "rated" state. Guarded up front so we
+      // don't clone-and-emit a spurious no-op update for a non-completed order.
+      if (this.state.orders[input.orderId]?.status === "completed") {
+        const order = this.replaceOrder(input.orderId, (o) => {
+          o.status = "rated";
+        });
+        if (order) this.scheduleEmit(`order:${order.id}`, () => this.state.orders[order.id]);
       }
 
       await this.persist();

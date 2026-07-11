@@ -521,6 +521,140 @@ language switch, not just that the Hebrew path works.
   rather than assuming they did from having followed the rules while
   writing each screen.
 
-## Phase 10 — README + final docs
+## Phase 10 — README + final docs, and a major correctness bug found and fixed
 
-_pending_
+- `README.md`: what the app is, how to run it (no env vars/API keys needed —
+  everything is local mock data, the phone-verification code is always
+  `000000`), test/lint/typecheck commands, project structure, links to
+  `DESIGN.md` and this file.
+- `src/backend/supabase/README.md`: expanded from a short placeholder into a
+  real plan — proposed Postgres schema (users/orders/chat_messages/ratings)
+  mapped directly from `types.ts`, how each of the adapter's five domains
+  maps to Supabase primitives (Auth, PostGIS for `listNearby`, Realtime
+  channels replacing the mock's emitter, RLS for chat/order visibility,
+  a trigger for the running rating average instead of the mock's manual
+  update), and an explicit note that the bot engine has no equivalent in a
+  real backend (bots exist only to demo a marketplace before it has real
+  supply).
+
+### A real, serious bug found during final testing — full writeup
+
+While closing the last gap in the plan's own Definition of Done (§7:
+"decline from a bot → raise price → retry" specifically called out as a
+required E2E path, and it had only been exercised in `jest`, never live),
+a live browser test of the decline path revealed that the waiting screen
+**never updated** to show the declined banner — it sat on the pending
+radar indefinitely, even though the backend had genuinely transitioned the
+order to `"declined"` (confirmed by inspecting `localStorage` directly, and
+confirmed further by the fact that reloading the page immediately showed
+the correct declined state).
+
+What it wasn't, ruled out in order via live instrumentation (each with a
+rebuild + browser re-test, not just reasoning about it):
+- **Not a timing/throttling artifact.** An isolated `jest` test against the
+  same `MockBackend` with real (non-shortened) default delays resolved
+  correctly in 16s. A version with the decision delay shortened to 2–4s
+  *still* failed live in the browser every time — ruling out "just needs
+  longer than my test waited."
+- **Not `RadarPulse`/animation starvation**, despite a very plausible-looking
+  lead: the console explicitly warned `useNativeDriver` isn't supported on
+  web and falls back to JS-driven animation, and disabling the component
+  once did appear to "fix" it. Rebuilt `RadarPulse` as a genuine two-file
+  platform split (`RadarPulse.native.tsx` keeps the original `Animated`
+  version, which is correct and native-driven on real iOS/Android;
+  `RadarPulse.web.tsx` uses pure CSS `animationKeyframes`, off the JS thread
+  entirely) — and the bug persisted identically. Then tested a fully static,
+  non-animated placeholder in place of the radar — *still* failed. This
+  ruled out animation, on either implementation, as the cause.
+- **Not the Stack screen-transition.** Set `animation: "none"` on the root
+  `Stack` — no change.
+
+Root cause, found by instrumenting `on()`/`scheduleEmit()`/`mutateOrder()`
+with logging and tracing the exact object flowing through: `mutateOrder`
+(and several other write paths) **mutated the `Order`/`User` object already
+stored in `this.state` in place**, then handed that *same* object reference
+back out through `scheduleEmit`'s notification. `waiting.tsx` holds the
+order in a plain `useState`, first populated from an initial `getById()`
+call that returns that same live reference. When the later update arrived
+with the *same* object reference (just with its `.status` field mutated),
+React's built-in `Object.is` bail-out on `setState` correctly concluded
+"this is the same value as before" and skipped the re-render — even though
+the data had genuinely changed. `router.replace(...)` on the accept path
+masked the exact same bug there: navigation is an imperative call
+independent of whether the local re-render actually happens, so accept
+"appeared" to work every time it was tested, while decline (which has no
+navigation to fall back on) was the first path to actually expose it.
+
+Fixed at the source, not papered over with a UI-side workaround:
+- `mutateOrder` (and a new shared `replaceOrder`/`replaceUser` pair) now
+  **clone before mutating** and store the clone as the new value at that key,
+  so every write produces a fresh, referentially-distinct object.
+- Same fix applied to `updateAvatar`, `setAvailability` (both mutated the
+  current `User` in place), `appendMessage` (mutated the messages array via
+  `.push()` in place — meaning a *second* chat message might have had the
+  exact same silent-drop problem, not just order-status changes), and
+  `ratings.submit`'s two mutation sites (the ratee's nested rating-summary
+  object, and the order's `"completed" → "rated"` transition, which
+  previously bypassed `mutateOrder` entirely).
+- Added `src/components/BackButton`-style **defensive polling** to
+  `waiting.tsx` (a 3s `getById()` poll alongside the subscription) as cheap
+  extra insurance — not the fix itself, but reasonable belt-and-suspenders
+  for a pub/sub UI pattern regardless of this specific bug.
+- Kept the `RadarPulse.native.tsx` / `RadarPulse.web.tsx` platform split
+  that came out of chasing this — even though it wasn't the actual cause,
+  a pure-CSS web animation is strictly better than a JS-driven `Animated`
+  fallback on web (avoids the console warning, costs nothing on the JS
+  thread), so the investigation still produced a real, if secondary,
+  improvement.
+- Added `src/components/NearbyPanel`-style type-resolution shim
+  (`RadarPulse.tsx`) for the same reason as Phase 5's `moduleSuffixes`
+  lesson — Metro resolves the platform-suffixed files at bundle time
+  regardless.
+
+**New regression tests** (`lifecycle.test.ts`, "every mutation produces a
+fresh object reference"): assert directly that `getById()` returns a
+different reference after a status transition, that a chat thread's array
+reference changes on every new message, and that a rated user's ratings
+summary object is fresh after `ratings.submit` — using `.not.toBe()`
+(reference inequality), the exact property that was silently broken.
+These exist specifically so this class of bug can't reappear without a
+test failing immediately, rather than surfacing only in a live UI months
+later. 27/27 tests passing (24 prior + 3 new), stable across repeated runs.
+
+**Re-verified the fix live, comprehensively, not just via the unit tests**:
+ran the decline scenario 3 times in a row with full production default
+delays (5–20s decision + 1.5–8s notify) — the declined banner now renders
+correctly every time, no reload needed. Tested "raise price and retry"
+end-to-end (declined → click retry → new order created → back to the
+pulsing radar state for the new order, all live). Ran a full accept-path
+regression checking that *multiple* sequential scripted bot chat messages
+arrive live (5 of 6 observed within the test's watch window — the pattern,
+not just the first message, confirmed working). Confirmed zero console
+errors across every run. Confirmed `react-native-maps` still excluded from
+the web bundle after all these changes (the `RadarPulse` platform split
+didn't disturb the `NearbyPanel` one). Confirmed no temporary test-only
+settings (shortened delays, disabled animation, the debug `console.log`
+instrumentation) leaked into the committed diff — checked via `git diff`
+before every commit in this phase.
+
+### Final Definition-of-Done check (per the initiating plan's §7)
+
+- [x] `expo export -p web` succeeds (verified throughout every phase).
+- [x] Full customer-side E2E: signup → order → **decline from a bot** →
+  **raise price and retry** → accept → chat → complete → rate → appears in
+  history (Profile's order history, filtered to completed/rated).
+- [x] Scratcher-side: availability toggle → incoming bot-customer request
+  (modal, live countdown) → accept → chat → complete.
+- [x] he/en complete (every string audited, zero hardcoded text), RTL/LTR
+  verified live including a full second order cycle entirely in English.
+- [x] Zero `tsc` errors, `expo lint` 0 errors, one commit per phase (or per
+  inseparable phase-pair, documented when that happened).
+- [x] `README.md` with run instructions + this file summarizing the build.
+
+Gardan is feature-complete against the initiating plan. The only structural
+gap against a "real" product is the backend itself (by design — see
+`src/backend/supabase/README.md` for the documented path to one), and the
+`OrderStatus.in_progress` state, which is modeled but never entered (noted
+in Phase 6+7 — the state machine goes `pending → accepted → completed →
+rated` in practice; `in_progress` is a seam for a future "scratcher is en
+route, tracked live" feature, not a gap in what was asked for).

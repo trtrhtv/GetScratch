@@ -219,3 +219,102 @@ describe("MockBackend — bot-originated customer requests (scratcher side)", ()
     expect(later).toBe(afterStop);
   });
 });
+
+// Regression coverage for a real bug found via live browser testing: every
+// mutation used to mutate the SAME object already stored in `this.state`
+// in place, so a UI component holding an earlier reference to that exact
+// object (e.g. React state set from an initial `getById()`) would never
+// re-render when a later update arrived — React's plain-object `Object.is`
+// bail-out sees "same reference" and skips the render, even though the
+// data genuinely changed. The fix: every mutation now stores a *new* object
+// reference. These tests assert that contract directly, so it can't
+// silently regress back to in-place mutation.
+describe("MockBackend — every mutation produces a fresh object reference", () => {
+  let backend: MockBackend;
+
+  afterEach(() => {
+    backend?.dispose();
+  });
+
+  it("an order's reference changes after accept/decline, not just its fields", async () => {
+    backend = fastBackend({ rng: () => 0 }); // forces accept
+    const { userId } = await backend.auth.signUp("רותם ניר", "0501110022");
+    await backend.auth.verifyCode(userId, "000000");
+
+    const created = await backend.orders.create({
+      scratcherId: SCRATCHER_SEEDS[3]!.id,
+      zone: "upper",
+      intensity: "medium",
+      durationMinutes: 5,
+      price: 40,
+    });
+    const beforeDecision = await backend.orders.getById(created.id);
+
+    await waitFor(async () => (await backend.orders.getById(created.id))?.status !== "pending");
+    const afterDecision = await backend.orders.getById(created.id);
+
+    expect(afterDecision).not.toBe(beforeDecision);
+    expect(afterDecision?.status).toBe("accepted");
+
+    // markComplete must ALSO hand back a fresh reference, not the same one.
+    const completed = await backend.orders.markComplete(created.id);
+    expect(completed).not.toBe(afterDecision);
+  });
+
+  it("a chat thread is a fresh array on every new message, not the same array mutated in place", async () => {
+    // Push the bot's OWN scripted chat delay far out so it can't interleave
+    // with the two sends this test makes and race the assertions below.
+    backend = fastBackend({ rng: () => 0, botChatStepMinMs: 60_000, botChatStepMaxMs: 90_000 });
+    const { userId } = await backend.auth.signUp("דניאל אבן", "0501110033");
+    await backend.auth.verifyCode(userId, "000000");
+    const created = await backend.orders.create({
+      scratcherId: SCRATCHER_SEEDS[4]!.id,
+      zone: "lower",
+      intensity: "gentle",
+      durationMinutes: 2,
+      price: 40,
+    });
+    await waitFor(async () => (await backend.orders.getById(created.id))?.status === "accepted");
+
+    const first = await backend.chat.send(created.id, "הודעה ראשונה");
+    const threadAfterFirst = await backend.chat.list(created.id);
+    const second = await backend.chat.send(created.id, "הודעה שנייה");
+    const threadAfterSecond = await backend.chat.list(created.id);
+
+    expect(threadAfterSecond).not.toBe(threadAfterFirst);
+    expect(threadAfterFirst).toHaveLength(1);
+    expect(threadAfterSecond.map((m) => m.id)).toEqual([first.id, second.id]);
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it("a rated user's ratings summary is a fresh object, not the previous one mutated", async () => {
+    backend = fastBackend();
+    // Two sequential signups, both real Users in the same backend instance —
+    // verifyCode can switch "current user" back and forth between them,
+    // which is enough to test rater != ratee without a second session.
+    const { userId: userAId } = await backend.auth.signUp("עדן שריד", "0501110044");
+    await backend.auth.verifyCode(userAId, "000000");
+    const userABefore = await backend.auth.getCurrentUser();
+    expect(userABefore?.ratings.asScratcher.count).toBe(0);
+
+    const { userId: userBId } = await backend.auth.signUp("תום לביא", "0501110055");
+    await backend.auth.verifyCode(userBId, "000000"); // switch current user to B
+
+    // orderId doesn't need to resolve to a real persisted order — submit()
+    // only touches order state if it finds a matching "completed" order.
+    await backend.ratings.submit({
+      orderId: "no-such-order",
+      rateeId: userAId,
+      raterRole: "customer",
+      stars: 5,
+    });
+
+    await backend.auth.verifyCode(userAId, "000000"); // switch back to A
+    const userAAfter = await backend.auth.getCurrentUser();
+
+    expect(userAAfter).not.toBe(userABefore);
+    expect(userAAfter?.ratings.asScratcher).not.toBe(userABefore?.ratings.asScratcher);
+    expect(userAAfter?.ratings.asScratcher.count).toBe(1);
+    expect(userAAfter?.ratings.asScratcher.average).toBe(5);
+  });
+});
