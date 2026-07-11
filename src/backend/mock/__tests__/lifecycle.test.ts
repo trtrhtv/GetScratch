@@ -171,3 +171,51 @@ describe("MockBackend — nearby availability rotation", () => {
     backend.dispose();
   });
 });
+
+describe("MockBackend — bot-originated customer requests (scratcher side)", () => {
+  let backend: MockBackend;
+
+  afterEach(() => {
+    backend?.dispose();
+  });
+
+  it("a bot originates a request against the real user while they're available", async () => {
+    backend = fastBackend();
+    const { userId } = await backend.auth.signUp("רון גל", "0501112233");
+    await backend.auth.verifyCode(userId, "000000");
+
+    await backend.presence.setAvailability(true);
+    await new Promise((r) => setTimeout(r, 30));
+
+    const incoming = await backend.orders.listIncoming();
+    expect(incoming.length).toBeGreaterThan(0);
+    const order = incoming[0]!;
+    expect(order.scratcherId).toBe(userId);
+    expect(order.status).toBe("pending");
+    expect(SCRATCHER_SEEDS.some((s) => s.id === order.customerId)).toBe(true);
+
+    // Accepting it as the scratcher goes through the same public path a real
+    // incoming-request screen uses, and the bot (as customer) sends its
+    // scripted customer-side chat afterward.
+    await backend.orders.respond(order.id, { accept: true, etaMinutes: 5 });
+    await new Promise((r) => setTimeout(r, 30));
+    const messages = await backend.chat.list(order.id);
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0]?.senderId).toBe(order.customerId);
+  });
+
+  it("stops originating requests once the user goes unavailable", async () => {
+    backend = fastBackend();
+    const { userId } = await backend.auth.signUp("שני אור", "0507654321");
+    await backend.auth.verifyCode(userId, "000000");
+
+    await backend.presence.setAvailability(true);
+    await new Promise((r) => setTimeout(r, 15));
+    await backend.presence.setAvailability(false);
+    const afterStop = (await backend.orders.listIncoming()).length;
+
+    await new Promise((r) => setTimeout(r, 60));
+    const later = (await backend.orders.listIncoming()).length;
+    expect(later).toBe(afterStop);
+  });
+});

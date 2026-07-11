@@ -44,7 +44,9 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: theme.color.paper },
               animation: "fade",
             }}
-          />
+          >
+            <Stack.Screen name="incoming-request" options={{ presentation: "modal" }} />
+          </Stack>
         </I18nextProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

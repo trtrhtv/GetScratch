@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Menu, UserRound } from "lucide-react-native";
 import ScreenContainer from "@/components/ScreenContainer";
 import AvailabilityToggle from "@/components/AvailabilityToggle";
@@ -21,6 +21,7 @@ export default function HomeScreen() {
 
   const [scratchers, setScratchers] = useState<ScratcherProfile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const shownIncomingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = backend.presence.subscribeNearby(MOCK_MY_LOCATION, (list) => {
@@ -32,6 +33,26 @@ export default function HomeScreen() {
     });
     return unsubscribe;
   }, []);
+
+  // כשאני זמין/ה, בוט-לקוח עשוי לשלוח בקשה. אין מנגנון subscribe ייעודי
+  // לבקשות נכנסות ב-adapter — פולינג קליל מספיק לצורך ה-MVP (PLAN 6).
+  // useFocusEffect (לא useEffect): Stack משאיר את Home מותקן ברקע כשעוברים
+  // להזמנה פעילה, ופולינג-רקע שם היה עלול לפתוח מודל בקשה-נכנסת שנייה מעל
+  // מסך ההזמנה הנוכחית — נצפה בפועל בבדיקה. הפולינג רץ רק כש-Home בפוקוס.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAvailable) return;
+      const interval = setInterval(async () => {
+        const incoming = await backend.orders.listIncoming();
+        const next = incoming[0];
+        if (next && shownIncomingIdRef.current !== next.id) {
+          shownIncomingIdRef.current = next.id;
+          router.push({ pathname: "/incoming-request", params: { orderId: next.id } });
+        }
+      }, 4000);
+      return () => clearInterval(interval);
+    }, [isAvailable])
+  );
 
   const selected = scratchers.find((s) => s.id === selectedId) ?? null;
 

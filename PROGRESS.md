@@ -316,6 +316,114 @@ Autonomous build following the plan in the initiating instructions. One entry pe
   too short). Re-ran with a longer wait to confirm before concluding anything
   was actually wrong; nothing was.
 
-## Phase 6 — Full order flow incl. scratcher side
+## Phase 6 + 7 — Full order flow, chat, phone, completion, rating (done)
+
+Built and verified together in one pass: `active.tsx` (needed by both
+"accepted" transitions — customer side from `waiting.tsx`, scratcher side
+from `incoming-request.tsx`) requires chat/phone/complete to be functional
+before either phase's own "works end-to-end" gate can actually be tested.
+Splitting them would have meant writing `active.tsx` twice. Two phases,
+one coherent commit — documented here rather than forced into an artificial
+boundary.
+
+- `app/order/create.tsx`: zone via `ContourBackMap`, intensity/duration via
+  `SegmentedControl`, price via a `PriceStepper` (substituted for a slider —
+  see "out-of-plan" below) defaulting to `fairPrice(...)` for the current
+  mix (imported straight from `bots.ts`, reused rather than re-derived) until
+  the user manually adjusts it, after which their choice sticks.
+- `app/order/waiting.tsx`: subscribes to the order; the signature `RadarPulse`
+  motif (see below) while pending; on decline, a "raise price and retry"
+  button creates a *new* order (same terms, +₪5) rather than mutating the
+  terminal declined one; on accept, auto-navigates to `/order/active`.
+- `app/incoming-request.tsx`: a modal route (registered in `_layout.tsx`'s
+  `Stack.Screen` with `presentation: "modal"`) — order details, a live 30s
+  countdown that auto-declines on expiry, accept/decline. `app/home.tsx`
+  polls `orders.listIncoming()` every 4s while available (the adapter has no
+  dedicated "subscribe to my incoming requests" method — light polling is the
+  pragmatic MVP choice, noted in `adapter.ts`'s own docs as a seam a real
+  backend would replace with a push subscription).
+- `app/order/active.tsx`: status + ETA, phone reveal (`mockPhoneForId` — bots
+  have no real phone in the seed data) with a `tel:` call button, `ChatThread`
+  (bubbles aligned by sender, live via `chat.subscribe`), and the complete
+  button — visible to whichever party is the real user, since a bot
+  counterparty never calls `markComplete` itself.
+- `app/order/rate.tsx`: interactive `RatingStars` + a single-select quick-tag
+  chip (role-appropriate tag set from i18n), submits via `ratings.submit`
+  (moves the order to `"rated"`) or skips, then returns to Home.
+- `src/components/RadarPulse.tsx`: the DESIGN.md-mandated signature loading
+  motif — reuses `ContourBackMap`'s actual zone-contour SVG paths (not a
+  generic spinner), pulsing on a slow loop; respects
+  `AccessibilityInfo.isReduceMotionEnabled` per DESIGN.md §6.4.
+- `src/components/ChatThread.tsx`, `PriceStepper.tsx`; `src/utils/mockPhone.ts`.
+- Verification gate: `tsc --noEmit` 0 errors · `expo lint` 0 errors (same 1
+  pre-existing warning) · `jest` 24/24 (2 new tests added, see below) ·
+  `expo export -p web` succeeds.
+
+### Drove both sides of the full lifecycle in a real browser, not just the gate
+
+- **Customer side** (order *from* a bot): fast-forwarded onboarding → Home →
+  picked a scratcher → filled zone/intensity/duration, boosted the price via
+  the stepper to bias the bot's accept curve → submitted → waiting screen
+  showed the pulsing radar → bot accepted → active screen showed the right
+  counterparty, ETA, phone number, and the bot's scripted "on the way"
+  message already arriving → sent a chat message → completed → rating screen
+  (stars + tags) → submitted → landed back on Home. Zero console errors
+  across the whole run.
+- **Scratcher side** (bot requests *from* the real user): toggled available
+  on Home, waited for Home's poll to catch a bot-originated request, the
+  incoming-request modal appeared with correct order details and a live
+  countdown, accepted it → active screen (correct role-specific data) → the
+  bot's scripted *customer*-side chat arrived → completed → rating screen
+  with the scratcher-appropriate tag set → back to Home. To make this
+  practical to test live (the real default is a 5–15 *minute* window), the
+  singleton's `botCustomerRequestMinMs/MaxMs` were **temporarily** shrunk for
+  this one test run and reverted immediately after (`git diff` checked empty
+  before committing) — not shipped as a debug config.
+
+### A real bug the scratcher-side test surfaced — found and fixed, not shipped
+
+Testing with that intentionally-shortened timer caused a *second*
+bot-originated request to fire while the first was still being handled,
+popping a second incoming-request modal **on top of** the active-order
+screen and blocking the complete button. Root cause: `expo-router`'s `Stack`
+keeps a previous screen mounted (not unmounted) when you push a new one, so
+Home's `setInterval` polling effect kept running in the background the
+entire time the user was deep in an order flow on a completely different
+screen — not merely while the shortened test timer was active. This is real
+production behavior, just astronomically unlikely to bite with the actual
+5–15 minute default window (a single order interaction takes well under a
+minute). Fixed properly rather than dismissed as a test artifact: switched
+Home's incoming-request polling from `useEffect` to `useFocusEffect`
+(re-exported by `expo-router`), so it only runs while Home is the focused
+screen and pauses the moment the user navigates into an order flow. Re-ran
+the same scratcher-side browser test after the fix and confirmed no more
+overlapping modal.
+
+### Other out-of-plan decisions
+
+- **`PriceStepper` (±₪5 buttons) instead of a slider**: the spec calls for a
+  slider; adding `@react-native-community/slider` this late would mean
+  another native-dependency install round for a control that's functionally
+  equivalent here (price only ever needs ₪5 increments — the same granularity
+  the "raise offer" action already uses). Simpler, and delivers the same
+  product behavior.
+- **The real scratcher never sets their own ETA** — accepting an incoming
+  request defaults to a flat 5-minute ETA (`incoming-request.tsx`) rather
+  than adding an ETA-picker UI; there's no GPS/routing in this mock world to
+  make a picker meaningful anyway.
+- **`OrderStatus.in_progress` is defined but currently unused** — the state
+  machine goes `pending → accepted → completed (→ rated)` in practice;
+  nothing transitions an order to `"in_progress"` yet, so the
+  `statusInProgress`/`statusInProgressAsScratcher` i18n copy is unused for
+  now. Left the type and copy in place (harmless, and a natural seam if a
+  future "scratcher is en route" update is added) rather than ripping it out
+  mid-build.
+- Counterparty lookups (`active.tsx`, `incoming-request.tsx`, `rate.tsx`)
+  resolve a bot's display info via `presence.listNearby(...).find(...)`
+  rather than a dedicated "get profile by id" adapter method — reusing what
+  already exists rather than growing the adapter surface for a mock-only
+  need; a real backend would obviously add a direct lookup.
+
+## Phase 8 — Profile + history + language switch
 
 _pending_
